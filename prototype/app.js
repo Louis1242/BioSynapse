@@ -140,7 +140,8 @@ function renderBadge(spec){
   (spec.meta||[]).forEach(m=>{
     const s = document.createElement('span');
     s.textContent = `${m.k} ${m.v}`;
-    if (m.kind) s.classList.add(m.kind === 'pred' ? 'is-pred' : m.kind === 'warn' ? 'is-warn' : '');
+    if (m.kind === 'pred') s.classList.add('is-pred');
+    else if (m.kind === 'warn') s.classList.add('is-warn');
     meta.appendChild(s);
   });
   $('#emptyState').hidden = true;
@@ -525,6 +526,8 @@ function handlePick(p){
     executeCommand({ action:'focus_camera', target:key });
   } else {
     executeCommand({ action:'clear_highlight' });
+    State.selection = sel;              // 未标注位点同样要反映到底栏与上下文
+    renderSelection();
     setResiduePointer(sel.resi);
   }
   const card = $('#pickCard');
@@ -927,7 +930,11 @@ input.addEventListener('keydown', e=>{
   if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); submitInput(); }
 });
 document.addEventListener('keydown', e=>{
-  if (e.key === 'Escape'){ $('#drawer').hidden = true; $('#pickCard').hidden = true; }
+  if (e.key === 'Escape'){
+    $('#drawer').hidden = true; $('#pickCard').hidden = true;
+    $('#tabEvid').classList.remove('is-on');
+    $('#tabNarr').classList.add('is-on');
+  }
 });
 
 /* 结构库检索 */
