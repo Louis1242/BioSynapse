@@ -222,6 +222,7 @@ input,textarea{font:inherit;color:inherit}
   position:relative;flex:1 1 auto;min-height:0;overflow:hidden;
   background:var(--paper);
   cursor:grab;
+  isolation:isolate;         /* 自成层叠上下文：对比画布可置于最底层，覆盖控件在其上 */
 }
 .viewport.is-drag{cursor:grabbing}
 .viewport canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
@@ -230,14 +231,27 @@ input,textarea{font:inherit;color:inherit}
 /* 对比模式：主画布收窄至左半，对比画布占右半，中线为墨色分隔条
    （canvas 为替换元素，width 必须显式给 50%，auto 会退回固有宽度导致 right 被忽略） */
 .viewport.is-compare #scene{width:50%;right:50%}
-.cmp{position:absolute;left:50%;top:0;right:0;bottom:0;overflow:hidden;background:var(--paper)}
+.cmp{position:absolute;left:50%;top:0;right:0;bottom:0;overflow:hidden;background:var(--paper);z-index:-1}
 .cmp__canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+/* 对比面板头部：结构标识 + 退出按钮（挂在视口层，压在画布之上） */
+.cmp__head{
+  position:absolute;left:50%;top:24px;margin-left:12px;z-index:5;
+  display:flex;align-items:center;gap:6px;
+}
 .cmp__tag{
-  position:absolute;left:12px;top:24px;z-index:4;pointer-events:none;
+  pointer-events:none;
   font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--ink-2);
   background:rgba(255,255,255,.9);border:1px solid var(--hairline);border-radius:var(--r-md);
   padding:3px 7px;
 }
+.cmp__close{
+  display:inline-flex;align-items:center;gap:4px;
+  font-size:11px;color:var(--ink-2);
+  background:rgba(255,255,255,.92);border:1px solid var(--hairline-hard);border-radius:var(--r-md);
+  padding:3px 8px;transition:color var(--t-fast),border-color var(--t-fast),background var(--t-fast);
+}
+.cmp__close:hover{color:var(--ink);border-color:var(--ink);background:var(--accent-wash)}
+.cmp__close:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
 .cmp__div{
   position:absolute;left:50%;top:0;bottom:0;width:1px;z-index:3;pointer-events:none;
   background:linear-gradient(180deg,transparent,var(--ink-3) 18%,var(--ink-3) 82%,transparent);
@@ -291,6 +305,7 @@ input,textarea{font:inherit;color:inherit}
   background:rgba(255,255,255,.92);
   border:1px solid var(--hairline);border-left:2px solid var(--ink);
   border-radius:0 var(--r-md) var(--r-md) 0;padding:9px 12px 10px;
+  pointer-events:none;        /* 纯信息面板，不拦截画布拖拽 */
 }
 .badge__id{font-family:var(--mono);font-size:15px;font-weight:500;letter-spacing:.04em}
 .badge__meta{margin-top:5px;display:flex;flex-wrap:wrap;gap:5px}
@@ -318,6 +333,7 @@ input,textarea{font:inherit;color:inherit}
   position:absolute;left:0;right:0;top:0;height:26px;display:flex;align-items:center;gap:10px;
   background:rgba(255,255,255,.96);border-bottom:1px solid var(--ink);
   padding-left:0;z-index:4;
+  pointer-events:none;        /* 声明条横跨视口，不拦截两侧画布拖拽 */
 }
 .decl__stripes{
   width:74px;height:100%;flex:0 0 auto;
@@ -330,6 +346,7 @@ input,textarea{font:inherit;color:inherit}
 .vp__hud{
   position:absolute;right:24px;bottom:18px;display:flex;gap:14px;
   font-family:var(--mono);font-size:10px;color:var(--ink-4);
+  pointer-events:none;        /* 读数不拦截画布拖拽 */
 }
 .vp__hud b{color:var(--ink-3);font-weight:500}
 
@@ -773,9 +790,9 @@ input,textarea{font:inherit;color:inherit}
         </button>
         <button class="tool" id="btnCompare" aria-pressed="false" title="并排对比">
           <svg viewBox="0 0 18 18" aria-hidden="true"><rect x="1.5" y="3" width="6.5" height="12" fill="none" stroke="currentColor" stroke-width="1.4"/><rect x="10" y="3" width="6.5" height="12" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
-          并排对比
+          <span id="btnCompareLabel">并排对比</span>
         </button>
-        <button class="tool tool--toggle is-on" id="btnLinkCam" aria-pressed="true" title="两视图相机联动" hidden>
+        <button class="tool tool--toggle" id="btnLinkCam" aria-pressed="false" title="两视图相机联动（默认各自独立）" hidden>
           <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M7 5H4.5A2.5 2.5 0 0 0 4.5 10H7M11 13h2.5a2.5 2.5 0 0 0 0-5H11" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6 7.5h6" stroke="currentColor" stroke-width="1.4"/></svg>
           相机联动
         </button>
@@ -1328,7 +1345,8 @@ const ELEMENT = {
   FE:{ color:'#a25a2c', vdw:1.30 }
 };
 const CHAIN_COLOR = ['#7d94ad','#b09674','#8aa288','#a291ab','#b3a276','#85a3a3'];
-const SEL = '#17181a';
+/* 高亮色：白底上墨黑对比不足，改为品红；各处一律配低不透明度，避免遮住结构本身 */
+const SEL = '#c0399f';
 const AMBER = '#9b917d';
 
 function mulberry(seed){
@@ -1619,7 +1637,7 @@ function BSViewer(canvas, opts){
     const g = c.getContext('2d');
     const cx = size/2, rad = size/2;
     const grad = g.createRadialGradient(cx-rad*0.34, cx-rad*0.38, rad*0.05, cx, cx, rad*0.94);
-    grad.addColorStop(0, glow ? '#fff1e2' : '#ffffff');
+    grad.addColorStop(0, '#ffffff');
     grad.addColorStop(0.32, color);
     grad.addColorStop(1, shade(color, -0.66));
     g.fillStyle = grad;
@@ -1676,10 +1694,10 @@ function BSViewer(canvas, opts){
       ctx.strokeStyle = rgba('#050608', fog(z, loop?0.5:0.6));
       ctx.lineWidth = w + (loop?1.4:3.4)*st.dpr;
       strokePath(pts); ctx.stroke();
-      ctx.strokeStyle = rgba(sel ? SEL : rb.color, fog(z, loop?0.5:0.92));
+      ctx.strokeStyle = rgba(sel ? SEL : rb.color, fog(z, loop?0.5:(sel?0.72:0.92)));
       ctx.lineWidth = w; strokePath(pts); ctx.stroke();
       if (sel){
-        ctx.strokeStyle = rgba(SEL, fog(z, 0.55));
+        ctx.strokeStyle = rgba(SEL, fog(z, 0.28));
         ctx.lineWidth = w + 4*st.dpr; strokePath(pts); ctx.stroke();
       }
     });
@@ -1702,7 +1720,7 @@ function BSViewer(canvas, opts){
       const r = (sel?3.2:2.0)*scaleR(p.k);
       if (r < 0.5) return;
       const s = sprite(sel?SEL:a.color, r*st.dpr, sel);
-      ctx.globalAlpha = fog(p.z, 1);
+      ctx.globalAlpha = fog(p.z, sel ? 0.82 : 1);
       ctx.drawImage(s, p.x - s.width/2, p.y - s.height/2);
       ctx.globalAlpha = 1;
     });
@@ -1740,7 +1758,7 @@ function BSViewer(canvas, opts){
         const w = (kind==='coordination' ? 2.2 : kind==='heme' ? 1.6 : 3.2)*st.dpr*Math.max(.5, st.dist/150);
         ctx.lineWidth = Math.max(.7, w);
         ctx.strokeStyle = kind === 'coordination'
-          ? rgba(SEL, fog(z, 0.85))
+          ? rgba(SEL, fog(z, 0.6))
           : rgba(shade(color, -0.2), fog(z, kind === 'heme' ? 0.85 : 0.7));
         ctx.stroke();
       });
@@ -1751,10 +1769,10 @@ function BSViewer(canvas, opts){
         ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(.5, r + 1.7*st.dpr), 0, Math.PI*2);
         ctx.fillStyle = rgba('#0b0e12', fog(p.z, 0.9)); ctx.fill();
         ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(.4, r), 0, Math.PI*2);
-        ctx.fillStyle = rgba(sel ? SEL : '#7f8c94', fog(p.z, 0.96)); ctx.fill();
+        ctx.fillStyle = rgba(sel ? SEL : '#7f8c94', fog(p.z, sel ? 0.7 : 0.96)); ctx.fill();
       } else {
         const s = sprite(sel ? SEL : a.color, r*st.dpr, sel);
-        ctx.globalAlpha = fog(p.z, 1);
+        ctx.globalAlpha = fog(p.z, sel ? 0.82 : 1);
         ctx.drawImage(s, p.x - s.width/2, p.y - s.height/2);
         ctx.globalAlpha = 1;
       }
@@ -1769,7 +1787,7 @@ function BSViewer(canvas, opts){
       if (compact){
         const r = Math.max(3, 6.0*scaleR(c.k));
         ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, Math.PI*2);
-        ctx.strokeStyle = sel ? rgba(SEL, 0.55) : rgba(AMBER, fog(c.z, 0.6));
+        ctx.strokeStyle = sel ? rgba(SEL, 0.45) : rgba(AMBER, fog(c.z, 0.6));
         ctx.lineWidth = (sel?1.6:1.2)*st.dpr; ctx.stroke();
       }
       st.picks.push({ x:c.x, y:c.y, z:c.z, siteKey:h.siteKey, resi:h.siteKey, chain:h.chain, resn:'HEM', rad:15*st.dpr });
@@ -1804,9 +1822,9 @@ function BSViewer(canvas, opts){
       ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
       for (let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
       ctx.closePath();
-      ctx.fillStyle = rgba(sel ? SEL : m.color, fog(z, sel ? 0.30 : m.alpha));
+      ctx.fillStyle = rgba(sel ? SEL : m.color, fog(z, sel ? 0.20 : m.alpha));
       ctx.fill();
-      ctx.strokeStyle = rgba(sel ? SEL : m.color, fog(z, sel ? 0.62 : 0.30));
+      ctx.strokeStyle = rgba(sel ? SEL : m.color, fog(z, sel ? 0.48 : 0.30));
       ctx.lineWidth = (sel ? 1.1 : 0.6)*st.dpr; ctx.stroke();
     });
 
@@ -1818,7 +1836,7 @@ function BSViewer(canvas, opts){
       const sel = st.highlights.has('cristae');
       const w = (sel ? 3.6 : 2.2)*st.dpr*Math.max(.5, st.dist/150);
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      ctx.strokeStyle = rgba(sel ? SEL : rb.color, fog(z, sel ? 0.95 : 0.62));
+      ctx.strokeStyle = rgba(sel ? SEL : rb.color, fog(z, sel ? 0.72 : 0.62));
       ctx.lineWidth = w; strokePath(pts); ctx.stroke();
     });
 
@@ -1827,7 +1845,7 @@ function BSViewer(canvas, opts){
       const r = (a.resn === 'DNA' ? 2.5 : 1.6)*scaleR(p.k)*(sel?1.5:1);
       if (r < 0.35) return;
       ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI*2);
-      ctx.fillStyle = rgba(sel ? SEL : a.color, fog(p.z, sel ? 0.98 : 0.52));
+      ctx.fillStyle = rgba(sel ? SEL : a.color, fog(p.z, sel ? 0.75 : 0.52));
       ctx.fill();
     });
     if (st.highlights.has('mtdna')){
@@ -1981,6 +1999,7 @@ function BSViewer(canvas, opts){
       st.labelEls.forEach(el=>el.remove()); st.labelEls.clear();
     },
     setRepresentation(rep){ st.rep = rep; },
+    setAutoRotate(on){ st.spin = on ? 0.00035 : 0; },
     setHighlight(keys){ st.highlights = new Set(keys || []); },
     focusSite(key, zoom){
       const s = st.scene && st.scene.sites[key];
@@ -2022,7 +2041,7 @@ const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').match
 
 /* ── 状态单源 ──────────────────────────────────────────────────── */
 const State = {
-  structure:null, compareStructure:null, compareOn:false, camLinked:true,
+  structure:null, compareStructure:null, compareOn:false, camLinked:false, /* 对比视口默认独立相机 */
   rep:'cartoon', scopeSelection:false,
   selection:null, highlights:new Set(),
   mode:'cache', processStep:0, playing:false, lastClaim:null,
@@ -2033,7 +2052,8 @@ const State = {
 /* ── 渲染器实例（只读执行） ────────────────────────────────────── */
 let VM = null;            // 主视口
 let VC = null;            // 对比视口
-let cmpWrap = null;
+let cmpWrap = null;       // 对比画布容器
+let cmpHead = null;       // 对比面板头部（结构标识 + 退出按钮）
 
 const viewport = $('#viewport');
 VM = BSViewer($('#scene'), {
@@ -2570,8 +2590,6 @@ function ensureCompare(on){
     $('#scene').style.right = '50%';
     cmpWrap = document.createElement('div');
     cmpWrap.className = 'cmp';
-    cmpWrap.innerHTML = `
-      <div class="cmp__tag" id="cmpTag">对比结构</div>`;
     const cvs = document.createElement('canvas');
     cvs.className = 'cmp__canvas';
     cmpWrap.appendChild(cvs);
@@ -2579,26 +2597,47 @@ function ensureCompare(on){
     const div = document.createElement('div');
     div.className = 'cmp__div';
     vp.appendChild(div);
-    VC = BSViewer(cvs, { labels:false, autoRotate:true,
+    /* 头部挂在视口层（不是画布层），保证按钮始终可点可见 */
+    cmpHead = document.createElement('div');
+    cmpHead.className = 'cmp__head';
+    cmpHead.innerHTML = `<div class="cmp__tag" id="cmpTag">对比结构</div>
+      <button class="cmp__close" id="cmpClose" aria-label="退出对比模式" title="退出对比模式">退出对比 ×</button>`;
+    vp.appendChild(cmpHead);
+    $('#cmpClose', cmpHead).onclick = ()=> ensureCompare(false);
+    /* 各调各的摄像头：对比视口独立相机且不自动旋转；主视口在对比时同样停转，避免“一起转” */
+    VC = BSViewer(cvs, { labels:false, autoRotate:false,
       onCamera: s=>{ if (State.camLinked) VM.apply(s); } });
+    VM.setAutoRotate(false);
     VM.resize();
-    $('#btnLinkCam').hidden = false;
-    $('#btnCompare').setAttribute('aria-pressed','true');
-    $('#btnCompare').classList.add('is-on');
+    const lc = $('#btnLinkCam');
+    lc.hidden = false;
+    lc.classList.toggle('is-on', State.camLinked);
+    lc.setAttribute('aria-pressed', String(State.camLinked));
+    setCompareButton(true);
   } else if (!on && State.compareOn){
     State.compareOn = false;
     vp.classList.remove('is-compare');
     $('#scene').style.right = '';
     cmpWrap && cmpWrap.remove();
+    cmpHead && cmpHead.remove();
     $('.cmp__div', vp) && $('.cmp__div', vp).remove();
-    VC = null; cmpWrap = null;
+    VC = null; cmpWrap = null; cmpHead = null;
+    VM.setAutoRotate(true);
     VM.resize();
     $('#btnLinkCam').hidden = true;
-    $('#btnCompare').setAttribute('aria-pressed','false');
-    $('#btnCompare').classList.remove('is-on');
+    setCompareButton(false);
     State.compareStructure = null;
   }
   if (cmpWrap && State.compareStructure) $('#cmpTag').textContent = State.compareStructure;
+}
+/* 工具栏按钮同时承担退出职责，标签随之切换 */
+function setCompareButton(active){
+  const b = $('#btnCompare');
+  b.setAttribute('aria-pressed', String(active));
+  b.classList.toggle('is-on', active);
+  b.title = active ? '退出对比模式' : '并排对比';
+  const label = $('#btnCompareLabel');
+  if (label) label.textContent = active ? '退出对比' : '并排对比';
 }
 $('#btnCompare').onclick = ()=> ensureCompare(!State.compareOn);
 $('#btnLinkCam').onclick = e=>{
