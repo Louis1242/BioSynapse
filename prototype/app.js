@@ -664,7 +664,7 @@ function setProcessStep(n){
 function renderStepNote(s){
   if (!s) return;
   addTurn(`<div class="card"><p class="card__kicker">步骤 ${s.n+1} · ${s.name} · ${s.lv}</p>
-    <p style="font-family:var(--serif);font-size:13.5px;line-height:1.8;color:var(--bone-2)">${s.text}</p>
+    <p style="font-family:var(--serif);font-size:13.5px;line-height:1.8;color:var(--ink-2)">${s.text}</p>
     <div class="ev__acts"><button class="btn btn--ghost btn--sm" data-claim="${s.claim}">证据 ${(s.ev||[]).length}</button></div></div>`,
     true);
   $$('#thread [data-claim]').forEach(b=> b.onclick = ()=> openDrawer(b.dataset.claim));

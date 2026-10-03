@@ -18,18 +18,18 @@ const V3 = {
   lerp:(a,b,t)=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t]
 };
 
-/* 元素色取 CPK 惯例：颜色承载化学语义，不做装饰 */
+/* 元素色取 CPK 惯例：颜色承载化学语义，不做装饰（已为白底加深） */
 const ELEMENT = {
-  C :{ color:'#b9b4a8', vdw:1.70 },
-  N :{ color:'#6f9fd8', vdw:1.55 },
-  O :{ color:'#e4572e', vdw:1.52 },
-  S :{ color:'#d9b04a', vdw:1.80 },
-  P :{ color:'#d98f4a', vdw:1.80 },
-  FE:{ color:'#c2703c', vdw:1.30 }
+  C :{ color:'#6f6f6a', vdw:1.70 },
+  N :{ color:'#5b84c4', vdw:1.55 },
+  O :{ color:'#cf5538', vdw:1.52 },
+  S :{ color:'#bd9a45', vdw:1.80 },
+  P :{ color:'#b97f3e', vdw:1.80 },
+  FE:{ color:'#a25a2c', vdw:1.30 }
 };
-const CHAIN_COLOR = ['#8fa6bd','#b99a7a','#96ab90','#a894ab','#c0b184','#8ba8a6'];
-const SEL = '#e4572e';
-const AMBER = '#d2904a';
+const CHAIN_COLOR = ['#7d94ad','#b09674','#8aa288','#a291ab','#b3a276','#85a3a3'];
+const SEL = '#17181a';
+const AMBER = '#9b917d';
 
 function mulberry(seed){
   let a = seed >>> 0;
@@ -349,7 +349,7 @@ function BSViewer(canvas, opts){
     const k = f/d;
     return { x: st.w*st.dpr/2 + x1*k, y: st.h*st.dpr/2 - y1*k, z:d, k, vis:d>0 };
   }
-  const fog = (z,a)=> a*(1 - Math.min(1, Math.max(0,(z-70)/240))*0.74);
+  const fog = (z,a)=> a*(1 - Math.min(1, Math.max(0,(z-70)/240))*0.42);
   const scaleR = k => k*(st.dist/150);
 
   function strokePath(pts){
@@ -408,22 +408,26 @@ function BSViewer(canvas, opts){
     });
   }
 
-  /* 大半径原子（球棍 / 空间填充 / 表面） */
+  /* 大半径原子（球棍 / 空间填充 / 表面）。
+     不变量：四种表示模式必须有可区分的渲染参数 ——
+     球棍 vdw×0.46 且画键；空间填充 vdw×0.95 不画键；表面同空间填充再加轮廓晕圈。 */
   function drawAtomsBig(rep){
+    const stick = rep === 'ball-and-stick';
     const surface = rep === 'surface';
     const list = st.scene.atoms.map(a=>{
       const p = project(a.pos);
       const el = ELEMENT[a.el] || ELEMENT.C;
       const sel = a.sites && a.sites.some(s=>st.highlights.has(s));
-      const base = surface ? el.vdw*0.95 : el.vdw*0.46;
+      const base = stick ? el.vdw*0.46 : el.vdw*0.95;
       const r = base*scaleR(p.k)*(sel?1.28:1);
       return { p, a, el, sel, r };
     }).sort((x,y)=>y.p.z-x.p.z);
     st.prims += list.length;
-    if (!surface){
-      list.forEach(({p,a,el,sel,r})=>{
-        st.picks.push({ x:p.x, y:p.y, z:p.z, siteKey:(a.sites&&a.sites[0])||null, atom:a, resi:a.resi, chain:a.chain, resn:a.resn, rad:Math.max(10*st.dpr, r*st.dpr) });
-      });
+    /* 所有大原子模式都可拾取（半径随表示模式放大） */
+    list.forEach(({p,a,el,sel,r})=>{
+      st.picks.push({ x:p.x, y:p.y, z:p.z, siteKey:(a.sites&&a.sites[0])||null, atom:a, resi:a.resi, chain:a.chain, resn:a.resn, rad:Math.max(10*st.dpr, r*st.dpr) });
+    });
+    if (stick){
       /* 先画键，再画球 */
       const bonds = st.scene.bonds.map(b=>{
         const A = st.scene.atoms[b.a], B = st.scene.atoms[b.b];
@@ -458,30 +462,17 @@ function BSViewer(canvas, opts){
   }
 
   function drawHemes(compact){
-    const pulse = 0.5 + 0.5*Math.sin(st.time/420);
+    /* 高亮反馈：静态、限定在选中位点本身，不做逐帧呼吸动画，避免满屏闪动的圈 */
     st.scene.hemes.forEach(h=>{
       const c = project(h.center);
       const sel = st.highlights.has(h.siteKey);
       if (compact){
         const r = Math.max(3, 6.0*scaleR(c.k));
         ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, Math.PI*2);
-        ctx.strokeStyle = sel ? rgba(SEL, 0.9) : rgba(AMBER, fog(c.z, 0.72));
-        ctx.lineWidth = (sel?2:1.2)*st.dpr; ctx.stroke();
-        if (sel){
-          ctx.beginPath(); ctx.arc(c.x, c.y, r*1.6 + pulse*3*st.dpr, 0, Math.PI*2);
-          ctx.strokeStyle = rgba(SEL, 0.18 + 0.32*(1-pulse)); ctx.lineWidth = 1.3*st.dpr; ctx.stroke();
-        }
+        ctx.strokeStyle = sel ? rgba(SEL, 0.55) : rgba(AMBER, fog(c.z, 0.6));
+        ctx.lineWidth = (sel?1.6:1.2)*st.dpr; ctx.stroke();
       }
       st.picks.push({ x:c.x, y:c.y, z:c.z, siteKey:h.siteKey, resi:h.siteKey, chain:h.chain, resn:'HEM', rad:15*st.dpr });
-    });
-    /* 选中原子光环 */
-    st.scene.atoms.forEach(a=>{
-      if (!a.sites || !a.sites.some(s=>st.highlights.has(s))) return;
-      const p = project(a.pos);
-      const r = Math.max(3, 9*scaleR(p.k)*(1 + pulse*0.2));
-      ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI*2);
-      ctx.strokeStyle = rgba(SEL, 0.15 + 0.42*(1-pulse));
-      ctx.lineWidth = 1.4*st.dpr; ctx.stroke();
     });
   }
 
@@ -495,7 +486,6 @@ function BSViewer(canvas, opts){
 
   function drawOrganelle(){
     st.picks = [];
-    const pulse = 0.5 + 0.5*Math.sin(st.time/420);
     const faces = [];
     st.scene.meshes.forEach(m=>{
       const proj = m.verts.map(project);
@@ -544,7 +534,7 @@ function BSViewer(canvas, opts){
       const dp = st.scene.atoms.filter(a=>a.resn === 'DNA').map(a=>project(a.pos));
       if (dp.length){
         ctx.beginPath(); dp.forEach((p,i)=> i ? ctx.lineTo(p.x,p.y) : ctx.moveTo(p.x,p.y)); ctx.closePath();
-        ctx.strokeStyle = rgba(SEL, 0.25 + 0.3*pulse); ctx.lineWidth = 1.4*st.dpr; ctx.stroke();
+        ctx.strokeStyle = rgba(SEL, 0.3); ctx.lineWidth = 1.4*st.dpr; ctx.stroke();
       }
     }
     Object.values(st.scene.sites).forEach(s=>{
