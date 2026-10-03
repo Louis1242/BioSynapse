@@ -1,0 +1,2991 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BioSynapse · 3D 生物大分子教学工作台</title>
+<meta name="description" content="BioSynapse 工作台高保真原型（演示数据）：提问 → 加载结构 → 高亮 → AI 讲解 → 证据抽屉。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ══════════════════════════════════════════════════════════════════
+   BioSynapse 工作台原型 · 视觉方向（v2）
+   「纸面 · 墨色」：纯白工作台，细发丝分隔线，墨黑作为唯一强调色
+   - 中文衬线承载讲解（可审计陈述），无衬线承载控件，等宽承载标识符
+   - 无彩色装饰：置信印章、状态点均以形状区分（无障碍）
+   - 渲染视口保持纯白，仅用灰度刻度与墨色记号
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── tokens ─────────────────────────────────────────────────────── */
+:root{
+  --paper:#ffffff;        /* 页面 / 渲染空间基准：纯白 */
+  --paper-2:#fafaf9;
+  --paper-3:#f4f4f2;
+  --paper-4:#eceae6;
+
+  --ink:#1a1b1c;          /* 主文字 / 强调（墨色） */
+  --ink-2:#52545a;
+  --ink-3:#8b8d93;
+  --ink-4:#b6b7bc;
+
+  --hairline:#e6e5e1;
+  --hairline-soft:rgba(0,0,0,.05);
+  --hairline-hard:rgba(0,0,0,.16);
+
+  --accent:#1a1b1c;              /* 主按钮 / 焦点（墨色，唯一强调） */
+  --accent-2:#5f6167;            /* 次级强调线 */
+  --accent-wash:rgba(0,0,0,.055);/* 强调底衬 */
+  --sel:#1a1b1c;                 /* 选中 / 高亮（墨色） */
+  --sel-wash:rgba(0,0,0,.06);
+  --ok:#1a1b1c;                  /* 实心点 = 正常 */
+  --warn:#8b8d93;                /* 空心点 = 待核 */
+
+  --serif:"Noto Serif SC","Songti SC","Source Han Serif SC",serif;
+  --sans:"Noto Sans SC","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --mono:"IBM Plex Mono","SFMono-Regular",ui-monospace,Menlo,Consolas,monospace;
+
+  --r-sm:3px; --r-md:5px; --r-lg:8px;
+  --shadow-1:0 1px 2px rgba(0,0,0,.05);
+  --shadow-2:0 14px 34px -20px rgba(0,0,0,.25), 0 0 0 1px rgba(0,0,0,.05);
+  --ease:cubic-bezier(.22,.68,.28,1);
+  --t-fast:160ms; --t-mid:280ms; --t-slow:520ms;
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-weight:400;
+  font-size:13px;
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+  overflow:hidden;
+}
+h1,h2,h3,h4,p,ul,ol,li,figure{margin:0}
+ul,ol{list-style:none;padding:0}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input,textarea{font:inherit;color:inherit}
+::selection{background:var(--ink);color:#fff}
+
+/* hidden 属性兜底：[hidden] 默认样式会被组件的 display 覆盖，必须显式声明 */
+[hidden]{display:none !important}
+
+/* ── 审计条 ─────────────────────────────────────────────────────── */
+.strip{
+  height:46px;display:flex;align-items:center;gap:18px;
+  padding:0 16px;background:var(--paper);
+  border-bottom:1px solid var(--hairline);
+  position:relative;z-index:20;
+  animation:dropIn var(--t-slow) var(--ease) both;
+}
+.strip::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;
+  background:linear-gradient(90deg,transparent,var(--ink-3) 18%,transparent 62%);opacity:.4}
+.strip__brand{display:flex;align-items:center;gap:10px;flex:0 0 auto}
+.mark{width:22px;height:22px;color:var(--ink);flex:0 0 auto}
+.wordmark{font-family:var(--serif);font-weight:600;font-size:16px;letter-spacing:.02em}
+.strip__guards{display:flex;align-items:center;gap:16px;flex:1 1 auto;justify-content:center;font-size:11.5px;color:var(--ink-2)}
+.guard{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.guard b{font-family:var(--mono);font-weight:500;color:var(--ink)}
+.guard--quiet{color:var(--ink-4);font-family:var(--mono);font-size:10.5px}
+.dot{width:6px;height:6px;border-radius:50%;flex:0 0 auto}
+.dot--ok{background:var(--ok)}
+.dot--warn{background:transparent;border:1px solid var(--ink-3)}
+.strip__modes{display:flex;align-items:center;gap:10px;flex:0 0 auto}
+
+.chip{
+  font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+  padding:2px 6px;border-radius:var(--r-sm);border:1px solid var(--hairline-hard);color:var(--ink-3);
+}
+.chip--proto{color:var(--ink);border-color:var(--ink-3);background:var(--accent-wash)}
+
+.modeswitch{display:flex;border:1px solid var(--hairline);border-radius:var(--r-md);overflow:hidden}
+.modeswitch__opt{
+  font-size:11.5px;padding:5px 10px;color:var(--ink-3);border-right:1px solid var(--hairline);
+  transition:background var(--t-fast),color var(--t-fast);
+}
+.modeswitch__opt:last-child{border-right:0}
+.modeswitch__opt:hover{color:var(--ink-2);background:var(--paper-2)}
+.modeswitch__opt.is-on{background:var(--paper-4);color:var(--ink)}
+.modeswitch__opt.is-on::before{content:"";display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--ink);margin-right:6px;vertical-align:1px}
+.modeswitch__opt:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
+
+/* ── 按钮 ───────────────────────────────────────────────────────── */
+.btn{
+  font-size:12px;padding:6px 11px;border-radius:var(--r-md);border:1px solid var(--hairline-hard);
+  transition:background var(--t-fast),color var(--t-fast),border-color var(--t-fast);
+  white-space:nowrap;
+}
+.btn--sm{font-size:11px;padding:4px 9px}
+.btn--ghost{color:var(--ink-2)}
+.btn--ghost:hover{background:var(--paper-3);color:var(--ink)}
+.btn--ghost:disabled{opacity:.4;cursor:not-allowed}
+.btn--ink{background:var(--ink);color:#fff;border-color:var(--ink);font-weight:500}
+.btn--ink:hover{background:#2c2d30}
+.btn:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
+
+/* ── 工作台三栏 ─────────────────────────────────────────────────── */
+.bench{
+  height:calc(100% - 46px);display:grid;
+  grid-template-columns:236px minmax(0,1fr) 420px;
+}
+.rail,.panel,.stage{min-height:0}
+.rail{
+  border-right:1px solid var(--hairline);background:var(--paper);
+  display:flex;flex-direction:column;overflow-y:auto;
+  animation:slideL var(--t-slow) var(--ease) both;
+}
+.panel{
+  border-left:1px solid var(--hairline);background:var(--paper);
+  display:flex;flex-direction:column;position:relative;
+  animation:slideR var(--t-slow) var(--ease) .08s both;
+}
+.stage{display:flex;flex-direction:column;background:var(--paper);animation:fadeUp var(--t-slow) var(--ease) .04s both}
+
+@keyframes dropIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+@keyframes slideL{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
+@keyframes slideR{from{opacity:0;transform:translateX(12px)}to{opacity:1;transform:none}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* ── 左栏 ───────────────────────────────────────────────────────── */
+.rail__block{padding:14px 14px 16px;border-bottom:1px solid var(--hairline-soft)}
+.rail__block--grow{flex:1 1 auto;border-bottom:0}
+.rail__title{
+  font-size:10.5px;font-family:var(--mono);letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-3);display:flex;align-items:baseline;gap:8px;margin-bottom:10px;
+}
+.rail__title span{font-family:var(--sans);letter-spacing:0;text-transform:none;font-size:10.5px;color:var(--ink-4)}
+.rail__note{font-size:11px;line-height:1.55;color:var(--ink-4);margin-top:10px;border-left:1px solid var(--hairline-hard);padding-left:8px}
+.rail__actions{margin-top:10px}
+.rail__foot{padding:12px 14px 16px;border-top:1px solid var(--hairline);font-family:var(--mono);font-size:10px;color:var(--ink-4)}
+.rail__foot .sep{margin:0 6px}
+.rail__foot p{margin-top:6px;font-family:var(--sans);font-size:10.5px;line-height:1.5;color:var(--ink-4)}
+
+.field{position:relative;display:flex;align-items:center}
+.field svg{position:absolute;left:8px;width:13px;height:13px;color:var(--ink-4)}
+.field input{
+  width:100%;background:var(--paper);border:1px solid var(--hairline);border-radius:var(--r-md);
+  padding:6px 8px 6px 26px;font-size:12px;
+}
+.field input::placeholder{color:var(--ink-4)}
+.field input:focus{outline:none;border-color:var(--ink-3);background:var(--paper-2)}
+
+.preset{margin-top:8px;display:flex;flex-direction:column;gap:2px}
+.preset li button{
+  width:100%;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;
+  padding:6px 7px;border-radius:var(--r-md);text-align:left;transition:background var(--t-fast);
+}
+.preset li button:hover{background:var(--paper-3)}
+.preset li button.is-on{background:var(--paper-4);box-shadow:inset 2px 0 0 var(--ink)}
+.preset .p-id{font-family:var(--mono);font-size:11.5px;color:var(--ink)}
+.preset .p-name{font-size:11.5px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.preset .p-tag{font-family:var(--mono);font-size:9.5px;color:var(--ink-4);border:1px solid var(--hairline);padding:1px 4px;border-radius:2px}
+.preset li.hide{display:none}
+
+.scenes{display:flex;flex-direction:column;gap:2px}
+.scenes button{
+  width:100%;display:grid;grid-template-columns:22px 1fr auto;align-items:center;gap:8px;
+  padding:6px 7px;border-radius:var(--r-md);text-align:left;transition:background var(--t-fast);
+}
+.scenes button:hover{background:var(--paper-3)}
+.scenes b{font-family:var(--mono);font-size:10px;color:var(--accent-2);font-weight:500}
+.scenes span{font-size:11.5px;color:var(--ink-2)}
+.scenes em{font-family:var(--mono);font-size:10px;font-style:normal;color:var(--ink-4)}
+
+.legend{display:flex;flex-direction:column;gap:8px}
+.legend li{display:grid;grid-template-columns:14px 1fr;column-gap:8px;align-items:center}
+.legend span{font-size:11.5px;color:var(--ink-2)}
+.legend em{grid-column:2;font-size:10.5px;font-style:normal;color:var(--ink-4)}
+/* 印章：用形状而非颜色区分置信层级（无障碍） */
+.stamp{width:12px;height:12px;display:block;border:1px solid var(--ink);position:relative;background:transparent}
+.stamp--exp{background:var(--ink)}
+.stamp--exp::after{content:"";position:absolute;inset:2px;border:1px solid #fff}
+.stamp--con{border-radius:50%;background:
+  repeating-linear-gradient(45deg,var(--ink) 0 1.5px,transparent 1.5px 3px)}
+.stamp--pre{border-radius:50%;border-style:dashed}
+
+.sessions{display:flex;flex-direction:column;gap:2px;max-height:220px;overflow-y:auto}
+.sessions__empty{font-size:11px;color:var(--ink-4)}
+.sessions li button{
+  width:100%;text-align:left;padding:6px 7px;border-radius:var(--r-md);transition:background var(--t-fast);
+}
+.sessions li button:hover{background:var(--paper-3)}
+.sessions .s-name{display:block;font-size:11.5px;color:var(--ink-2)}
+.sessions .s-meta{display:block;font-family:var(--mono);font-size:9.5px;color:var(--ink-4);margin-top:2px}
+
+/* ── 视口 ───────────────────────────────────────────────────────── */
+.viewport{
+  position:relative;flex:1 1 auto;min-height:0;overflow:hidden;
+  background:var(--paper);
+  cursor:grab;
+}
+.viewport.is-drag{cursor:grabbing}
+.viewport canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.viewport canvas:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
+
+/* 对比模式：主画布收窄至左半，对比画布占右半，中线为墨色分隔条
+   （canvas 为替换元素，width 必须显式给 50%，auto 会退回固有宽度导致 right 被忽略） */
+.viewport.is-compare #scene{width:50%;right:50%}
+.cmp{position:absolute;left:50%;top:0;right:0;bottom:0;overflow:hidden;background:var(--paper)}
+.cmp__canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.cmp__tag{
+  position:absolute;left:12px;top:24px;z-index:4;pointer-events:none;
+  font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--ink-2);
+  background:rgba(255,255,255,.9);border:1px solid var(--hairline);border-radius:var(--r-md);
+  padding:3px 7px;
+}
+.cmp__div{
+  position:absolute;left:50%;top:0;bottom:0;width:1px;z-index:3;pointer-events:none;
+  background:linear-gradient(180deg,transparent,var(--ink-3) 18%,var(--ink-3) 82%,transparent);
+}
+
+.vp__grid{
+  position:absolute;inset:0;pointer-events:none;opacity:.7;
+  background-image:radial-gradient(rgba(0,0,0,.07) 1px,transparent 1px);
+  background-size:26px 26px;
+  mask-image:radial-gradient(115% 85% at 50% 45%,#000 30%,transparent 78%);
+  -webkit-mask-image:radial-gradient(115% 85% at 50% 45%,#000 30%,transparent 78%);
+}
+/* 四角套准标记：印刷制版语汇 */
+.vp__corners i{position:absolute;width:17px;height:17px;pointer-events:none;opacity:.4}
+.vp__corners i::before,.vp__corners i::after{content:"";position:absolute;background:var(--ink-3)}
+.vp__corners i::before{left:50%;top:0;width:1px;height:100%;transform:translateX(-50%)}
+.vp__corners i::after{top:50%;left:0;height:1px;width:100%;transform:translateY(-50%)}
+.vp__corners i:nth-child(1){left:14px;top:14px}
+.vp__corners i:nth-child(2){right:14px;top:14px}
+.vp__corners i:nth-child(3){left:14px;bottom:14px}
+.vp__corners i:nth-child(4){right:14px;bottom:14px}
+
+/* 刻度尺 */
+.ruler{position:absolute;pointer-events:none;color:var(--ink-4)}
+.ruler--top{left:0;right:0;top:0;height:12px;
+  background-image:repeating-linear-gradient(90deg,var(--hairline-hard) 0 1px,transparent 1px 14px);
+  mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent);
+  -webkit-mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent)}
+/* 标签居中放置，避开顶部刻度两端 mask 渐隐区；top:0 避免被视口裁切 */
+.ruler__label{position:absolute;left:50%;transform:translateX(-50%);top:0;font-family:var(--mono);font-size:9.5px;color:var(--ink-4);letter-spacing:.08em}
+.ruler--left{left:0;top:0;bottom:0;width:12px;
+  background-image:repeating-linear-gradient(180deg,var(--hairline-hard) 0 1px,transparent 1px 14px);
+  mask-image:linear-gradient(180deg,transparent,#000 10%,#000 90%,transparent)}
+/* 残基指针：讲解推进时在左尺上滑动 —— “讲到哪里” */
+.ruler__pointer{
+  position:absolute;left:11px;top:50%;transform:translateY(-50%);
+  display:flex;align-items:center;gap:5px;
+  opacity:0;transition:top var(--t-slow) var(--ease),opacity var(--t-mid);
+}
+.ruler__pointer.is-live{opacity:1}
+.ruler__pointer::before{content:"";width:9px;height:1px;background:var(--ink)}
+.ruler__pointer b{
+  font-family:var(--mono);font-size:10px;font-weight:500;color:var(--ink);
+  background:var(--paper);border:1px solid var(--ink-3);padding:1px 4px;border-radius:2px;
+}
+.ruler__pointer span{display:none}
+
+/* 结构徽章 */
+.vp__badge{
+  position:absolute;left:26px;top:24px;max-width:min(46%,360px);
+  background:rgba(255,255,255,.92);
+  border:1px solid var(--hairline);border-left:2px solid var(--ink);
+  border-radius:0 var(--r-md) var(--r-md) 0;padding:9px 12px 10px;
+}
+.badge__id{font-family:var(--mono);font-size:15px;font-weight:500;letter-spacing:.04em}
+.badge__meta{margin-top:5px;display:flex;flex-wrap:wrap;gap:5px}
+.badge__meta span{
+  font-family:var(--mono);font-size:9.5px;color:var(--ink-3);
+  border:1px solid var(--hairline);padding:1px 5px;border-radius:2px;white-space:nowrap;
+}
+.badge__meta span.is-pred{color:var(--ink-2);border-color:var(--ink-3);background:var(--accent-wash)}
+.badge__meta span.is-warn{color:var(--ink-2);border-color:var(--ink-3);border-style:dashed}
+
+/* 表示模式 */
+.vp__rep{position:absolute;right:24px;top:24px;display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.seg{display:flex;background:rgba(255,255,255,.9);border:1px solid var(--hairline);border-radius:var(--r-md);overflow:hidden}
+.seg__opt{padding:6px 10px;font-size:11.5px;color:var(--ink-3);border-right:1px solid var(--hairline);transition:background var(--t-fast),color var(--t-fast)}
+.seg__opt:last-child{border-right:0}
+.seg__opt:hover{color:var(--ink);background:var(--paper-3)}
+.seg__opt.is-on{background:var(--paper-4);color:var(--ink);box-shadow:inset 0 -2px 0 var(--ink)}
+.seg__opt:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
+.scope{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink-2);
+  background:rgba(255,255,255,.9);border:1px solid var(--hairline);border-radius:var(--r-md);padding:4px 8px}
+.scope input{accent-color:var(--ink);width:12px;height:12px}
+
+/* 示意声明：斜纹 + 常驻，不可被忽略 */
+.vp__decl{
+  position:absolute;left:0;right:0;top:0;height:26px;display:flex;align-items:center;gap:10px;
+  background:rgba(255,255,255,.96);border-bottom:1px solid var(--ink);
+  padding-left:0;z-index:4;
+}
+.decl__stripes{
+  width:74px;height:100%;flex:0 0 auto;
+  background:repeating-linear-gradient(45deg,var(--ink) 0 5px,transparent 5px 10px);opacity:.9;
+}
+.decl__text{font-size:11.5px;letter-spacing:.06em;color:var(--ink)}
+.decl__ref{margin-left:auto;margin-right:24px;font-family:var(--mono);font-size:9.5px;color:var(--ink-3)}
+
+/* HUD 读数 */
+.vp__hud{
+  position:absolute;right:24px;bottom:18px;display:flex;gap:14px;
+  font-family:var(--mono);font-size:10px;color:var(--ink-4);
+}
+.vp__hud b{color:var(--ink-3);font-weight:500}
+
+/* 工具条 */
+.vp__tools{position:absolute;left:24px;bottom:16px;display:flex;gap:6px;flex-wrap:wrap}
+.tool{
+  display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-2);
+  background:rgba(255,255,255,.92);border:1px solid var(--hairline-hard);border-radius:var(--r-md);
+  padding:5px 9px;transition:background var(--t-fast),color var(--t-fast),border-color var(--t-fast);
+}
+.tool svg{width:14px;height:14px}
+.tool:hover{background:var(--paper-4);color:var(--ink)}
+.tool.is-on{border-color:var(--ink);color:var(--ink);background:var(--accent-wash)}
+.tool:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
+
+/* 拾取卡片 */
+.pick{
+  position:absolute;left:26px;bottom:58px;width:288px;
+  background:rgba(255,255,255,.97);
+  border:1px solid var(--hairline-hard);border-radius:var(--r-lg);box-shadow:var(--shadow-2);
+  padding:10px 12px 11px;animation:fadeUp var(--t-mid) var(--ease) both;
+}
+.pick__head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.pick__site{font-family:var(--mono);font-size:12.5px;color:var(--ink);font-weight:500}
+.pick__close{font-size:16px;line-height:1;color:var(--ink-4);padding:0 2px}
+.pick__close:hover{color:var(--ink)}
+.pick__map{margin-top:6px;font-family:var(--mono);font-size:10.5px;color:var(--ink-3);line-height:1.5}
+.pick__acts{margin-top:9px;display:flex;gap:6px}
+
+/* 加载 / 空态 */
+.vp__loading{
+  position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+  background:rgba(255,255,255,.88);z-index:5;
+}
+.load__bar{width:210px;height:2px;background:var(--hairline);overflow:hidden}
+.load__bar i{display:block;height:100%;width:34%;background:var(--ink);animation:scan 1.15s var(--ease) infinite}
+@keyframes scan{0%{transform:translateX(-100%)}100%{transform:translateX(320%)}}
+.load__step{font-size:12px;color:var(--ink-2)}
+.load__meta{font-family:var(--mono);font-size:10px;color:var(--ink-4)}
+
+.vp__empty{
+  position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+  color:var(--ink-3);text-align:center;pointer-events:none;
+}
+.vp__empty svg{width:52px;height:52px;color:var(--ink-4);opacity:.7;animation:spin 42s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.vp__empty p{font-size:12.5px;color:var(--ink-3)}
+.vp__empty b{font-family:var(--mono);color:var(--ink-2)}
+.vp__empty button{pointer-events:auto}
+
+/* ── 舞台底栏 + 指令日志 ────────────────────────────────────────── */
+.stagebar{
+  flex:0 0 auto;display:flex;align-items:center;gap:12px;
+  border-top:1px solid var(--hairline);background:var(--paper);padding:7px 14px;min-height:38px;
+}
+.selection{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-3);min-width:0}
+.selection__none{color:var(--ink-4)}
+.sel-chip{
+  display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;
+  border:1px solid var(--hairline-hard);background:var(--sel-wash);color:var(--ink);
+  padding:2px 6px;border-radius:2px;
+}
+.sel-map{font-family:var(--mono);font-size:10.5px;color:var(--ink-3)}
+.sel-map b{color:var(--ink);font-weight:500}
+.sel-clear{font-size:11px;color:var(--ink-4);text-decoration:underline;text-underline-offset:2px}
+.sel-clear:hover{color:var(--ink-2)}
+.logtoggle{
+  margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--ink-4);
+  border:1px solid var(--hairline);padding:2px 7px;border-radius:2px;flex:0 0 auto;
+}
+.logtoggle:hover{color:var(--ink-2);border-color:var(--hairline-hard)}
+.logtoggle b{color:var(--ink);font-weight:500}
+.cmdlog{border-top:1px solid var(--hairline);background:var(--paper-2);max-height:132px;overflow-y:auto;flex:0 0 auto}
+.cmdlog ol{padding:8px 14px;display:flex;flex-direction:column;gap:3px}
+.cmdlog li{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);display:flex;gap:8px;align-items:baseline}
+.cmdlog .c-t{color:var(--ink-4)}
+.cmdlog .c-a{color:var(--ink)}
+.cmdlog .c-ok{color:var(--ink-2)}
+.cmdlog .c-skip{color:var(--ink-4)}
+
+/* ── 右栏 ───────────────────────────────────────────────────────── */
+.panel__head{
+  flex:0 0 auto;display:flex;align-items:center;gap:12px;padding:0 14px;
+  border-bottom:1px solid var(--hairline);min-height:42px;
+}
+.panel__tabs{display:flex;gap:2px}
+.panel__tab{
+  font-size:12px;padding:6px 10px;border-radius:var(--r-md) var(--r-md) 0 0;color:var(--ink-3);
+  border-bottom:2px solid transparent;transition:color var(--t-fast),border-color var(--t-fast);
+}
+.panel__tab:hover{color:var(--ink-2)}
+.panel__tab.is-on{color:var(--ink);border-bottom-color:var(--ink)}
+.panel__ctx{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--ink-4);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.thread{flex:1 1 auto;overflow-y:auto;padding:16px 16px 8px;display:flex;flex-direction:column;gap:18px;scroll-behavior:smooth}
+.thread__intro{padding:12px 13px;border:1px solid var(--hairline);border-radius:var(--r-lg);background:var(--paper-2)}
+.thread__intro h3{font-family:var(--serif);font-size:15px;font-weight:600;letter-spacing:.01em}
+.thread__intro p{margin-top:7px;font-size:12px;color:var(--ink-3);line-height:1.7}
+.thread__hint{font-family:var(--mono);font-size:10.5px !important;color:var(--ink-4) !important}
+
+/* 用户提问 */
+.turn--user{display:flex;gap:10px;justify-content:flex-end}
+.turn--user .bubble{
+  max-width:88%;background:var(--paper-3);border:1px solid var(--hairline);
+  border-radius:var(--r-lg) var(--r-lg) 2px var(--r-lg);padding:8px 12px;font-size:12.5px;color:var(--ink);
+}
+.turn__who{font-family:var(--mono);font-size:9.5px;color:var(--ink-4);letter-spacing:.1em;text-transform:uppercase}
+
+/* 讲解：批注本版式 —— 左栏边注（claim/位点/印章），右栏衬线正文 */
+.narr{position:relative}
+.narr__head{display:flex;align-items:center;gap:9px;margin-bottom:9px}
+.narr__head .rule{flex:1 1 auto;height:1px;background:var(--hairline)}
+.narr__title{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4)}
+.narr__mode{font-family:var(--mono);font-size:9.5px;color:var(--ink-2);border:1px solid var(--hairline-hard);background:var(--accent-wash);padding:1px 5px;border-radius:2px}
+
+.sent{
+  display:grid;grid-template-columns:56px 1fr;gap:12px;
+  padding:10px 0 10px 0;border-bottom:1px dashed var(--hairline);
+  transition:background var(--t-fast);
+}
+.sent:last-child{border-bottom:0}
+.sent__note{display:flex;flex-direction:column;align-items:flex-start;gap:5px}
+.sent__claim{
+  font-family:var(--mono);font-size:9.5px;color:var(--ink-4);letter-spacing:.02em;
+  border:1px solid var(--hairline);padding:1px 4px;border-radius:2px;white-space:nowrap;
+}
+.sent__stamp{width:11px;height:11px;border:1px solid var(--ink);flex:0 0 auto;background:transparent}
+.sent__stamp[data-lv="实验证实"]{background:var(--ink)}
+.sent__stamp[data-lv="领域共识"]{border-radius:50%;background:repeating-linear-gradient(45deg,var(--ink) 0 1.5px,transparent 1.5px 3px)}
+.sent__stamp[data-lv="计算预测"]{border-radius:50%;border-style:dashed;background:transparent}
+.sent__site{font-family:var(--mono);font-size:9.5px;color:var(--ink-4)}
+.sent__body{font-family:var(--serif);font-size:14.5px;line-height:1.85;color:var(--ink);letter-spacing:.005em}
+.sent__body .focusword{color:var(--ink);border-bottom:1px solid var(--ink-3)}
+.sent.is-live{background:linear-gradient(90deg,var(--sel-wash),transparent 62%)}
+.sent.is-live .sent__claim{color:var(--ink);border-color:var(--ink-3)}
+.sent:hover{background:linear-gradient(90deg,rgba(0,0,0,.02),transparent 62%)}
+.sent__acts{margin-top:7px;display:flex;gap:7px;align-items:center}
+.sent__act{
+  font-size:11px;color:var(--ink-3);border:1px solid var(--hairline);border-radius:var(--r-sm);
+  padding:1px 6px;transition:color var(--t-fast),border-color var(--t-fast);
+}
+.sent__act:hover{color:var(--ink);border-color:var(--ink-3)}
+.sent__act--ev::before{content:"";display:inline-block;width:6px;height:6px;border:1px solid currentColor;margin-right:5px;vertical-align:0}
+.sent__act--ev[data-n="2"]::before{background:currentColor;box-shadow:0 0 0 1px var(--paper) inset}
+/* 打字机 */
+.caret{display:inline-block;width:7px;height:15px;background:var(--ink);vertical-align:-2px;animation:blink .9s steps(1) infinite;margin-left:2px}
+@keyframes blink{50%{opacity:0}}
+
+/* 候选消歧 / 拒答 / 安全拦截 */
+.card{border:1px solid var(--hairline-hard);border-radius:var(--r-lg);background:var(--paper-2);padding:11px 13px}
+.card__kicker{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.card__title{font-family:var(--serif);font-size:14px;font-weight:600;margin-top:5px}
+.card p{margin-top:6px;font-size:12px;color:var(--ink-3);line-height:1.65}
+.cands{margin-top:9px;display:flex;flex-direction:column;gap:4px}
+.cands button{
+  display:grid;grid-template-columns:auto 1fr auto;gap:9px;align-items:center;text-align:left;
+  padding:7px 9px;border:1px solid var(--hairline);border-radius:var(--r-md);transition:border-color var(--t-fast),background var(--t-fast);
+}
+.cands button:hover{border-color:var(--ink-3);background:var(--paper-3)}
+.cands .c-id{font-family:var(--mono);font-size:11.5px;color:var(--ink)}
+.cands .c-name{font-size:11.5px;color:var(--ink-2)}
+.cands .c-src{font-family:var(--mono);font-size:9.5px;color:var(--ink-4)}
+.card--deny{border-color:var(--ink)}
+.card--deny .card__kicker{color:var(--ink)}
+.card--deny .card__title{color:var(--ink)}
+.trace{margin-top:9px;font-family:var(--mono);font-size:10px;color:var(--ink-4);line-height:1.7;
+  border-top:1px solid var(--hairline);padding-top:8px}
+
+/* ── 证据抽屉 ───────────────────────────────────────────────────── */
+.drawer{
+  position:absolute;inset:42px 0 0 0;background:var(--paper);
+  border-top:1px solid var(--ink);display:flex;flex-direction:column;z-index:6;
+  animation:drawerIn var(--t-mid) var(--ease) both;
+}
+@keyframes drawerIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.drawer__head{
+  flex:0 0 auto;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;
+  padding:12px 14px 11px;border-bottom:1px solid var(--hairline);
+  background:repeating-linear-gradient(90deg,var(--ink-3) 0 1px,transparent 1px 6px) no-repeat bottom/100% 1px;
+}
+.drawer__kicker{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;color:var(--ink-3)}
+.drawer__title{font-family:var(--serif);font-size:14.5px;font-weight:600;margin-top:4px;line-height:1.5}
+.drawer__close{font-size:19px;line-height:1;color:var(--ink-4);padding:0 3px}
+.drawer__close:hover{color:var(--ink)}
+.drawer__body{flex:1 1 auto;overflow-y:auto;padding:14px}
+
+.ev{position:relative;border:1px solid var(--hairline);border-radius:var(--r-lg);background:var(--paper-2);padding:11px 12px;margin-bottom:10px}
+.ev:last-child{margin-bottom:0}
+.ev__top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ev__type{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;color:var(--ink-2);border:1px solid var(--hairline-hard);padding:1px 5px;border-radius:2px}
+.ev__lv{font-size:10.5px;color:var(--ink-3);display:inline-flex;align-items:center;gap:5px}
+.ev__unverified{margin-left:auto;font-family:var(--mono);font-size:9px;color:var(--ink-3);border:1px dashed var(--ink-3);padding:1px 5px;border-radius:2px}
+.ev__title{font-size:12.5px;color:var(--ink);margin-top:8px;line-height:1.6}
+.ev__loc{font-family:var(--mono);font-size:10px;color:var(--ink-4);margin-top:5px}
+.ev__quote{
+  margin-top:8px;border-left:2px solid var(--ink-3);padding:2px 0 2px 10px;
+  font-family:var(--serif);font-size:12.5px;line-height:1.75;color:var(--ink-2);
+}
+.ev__quote em{font-family:var(--sans);font-style:normal;font-size:10px;color:var(--ink-4);display:block;margin-top:4px}
+.ev__acts{margin-top:10px;display:flex;gap:7px;flex-wrap:wrap}
+.ev__link{
+  font-family:var(--mono);font-size:10.5px;color:var(--ink);text-decoration:none;
+  border-bottom:1px solid var(--ink-3);padding-bottom:1px;
+}
+.ev__link:hover{color:var(--ink-2)}
+.ev__meta{margin-top:9px;display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-family:var(--mono);font-size:10px;color:var(--ink-4)}
+.ev__meta b{font-weight:400;color:var(--ink-3)}
+
+.runbox{border:1px solid var(--hairline);border-radius:var(--r-lg);background:var(--paper-3);padding:11px 12px;margin-top:4px}
+.runbox h4{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4)}
+.runbox dl{margin-top:8px;display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-family:var(--mono);font-size:10.5px}
+.runbox dt{color:var(--ink-4)}
+.runbox dd{color:var(--ink-2);word-break:break-all}
+.drawer__foot{margin-top:12px;font-size:10.5px;line-height:1.6;color:var(--ink-4);border-top:1px solid var(--hairline);padding-top:10px}
+
+/* ── 输入区 ─────────────────────────────────────────────────────── */
+.composer{flex:0 0 auto;border-top:1px solid var(--hairline);background:var(--paper);padding:10px 14px 12px}
+.quick{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.quick button{
+  font-size:11px;color:var(--ink-3);border:1px solid var(--hairline);border-radius:100px;padding:3px 10px;
+  transition:color var(--t-fast),border-color var(--t-fast),background var(--t-fast);
+}
+.quick button:hover{color:var(--ink);border-color:var(--ink-3);background:var(--accent-wash)}
+.composer__box{display:flex;gap:8px;align-items:flex-end}
+.composer__box textarea{
+  flex:1 1 auto;resize:none;background:var(--paper);border:1px solid var(--hairline);border-radius:var(--r-lg);
+  padding:9px 11px;font-size:12.5px;line-height:1.6;max-height:108px;
+}
+.composer__box textarea::placeholder{color:var(--ink-4)}
+.composer__box textarea:focus{outline:none;border-color:var(--ink-3);background:var(--paper-2)}
+.send{
+  width:36px;height:36px;flex:0 0 auto;display:grid;place-items:center;border-radius:var(--r-lg);
+  background:var(--ink);color:#fff;transition:background var(--t-fast),transform var(--t-fast);
+}
+.send svg{width:18px;height:18px}
+.send:hover{background:#2c2d30}
+.send:active{transform:translateY(1px)}
+.send:disabled{opacity:.45;cursor:not-allowed}
+.composer__hint{margin-top:7px;font-family:var(--mono);font-size:9.5px;color:var(--ink-4);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.noscript{padding:20px;color:var(--ink-2)}
+
+/* 视口内的可点标签（细胞器示意） */
+.vlabel{
+  position:absolute;left:0;top:0;z-index:4;
+  font-size:10.5px;line-height:1;color:var(--ink-2);
+  background:rgba(255,255,255,.92);border:1px solid var(--hairline);border-radius:var(--r-sm);
+  padding:3px 6px;white-space:nowrap;transition:color var(--t-fast),border-color var(--t-fast);
+}
+.vlabel:hover{color:var(--ink);border-color:var(--ink-3)}
+.vlabel.is-on{color:var(--ink);border-color:var(--ink);background:var(--accent-wash)}
+
+/* 过程分步控制栏 */
+.procbar{
+  position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:4;
+  display:flex;align-items:center;gap:6px;padding:6px;
+  background:rgba(255,255,255,.94);border:1px solid var(--hairline);border-radius:var(--r-md);
+  box-shadow:var(--shadow-1);
+}
+.procbar__steps{display:flex;gap:4px}
+.procstep{
+  display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--ink-3);
+  border:1px solid var(--hairline);border-radius:var(--r-sm);padding:3px 7px;
+  transition:color var(--t-fast),border-color var(--t-fast),background var(--t-fast);
+}
+.procstep b{font-family:var(--mono);font-weight:500;color:var(--ink-4)}
+.procstep:hover{color:var(--ink);border-color:var(--ink-3)}
+.procstep.is-on{color:#fff;background:var(--ink);border-color:var(--ink)}
+.procstep.is-on b{color:#fff}
+
+/* 滚动条 */
+.thread::-webkit-scrollbar,.drawer__body::-webkit-scrollbar,.rail::-webkit-scrollbar,.cmdlog::-webkit-scrollbar{width:9px}
+.thread::-webkit-scrollbar-thumb,.drawer__body::-webkit-scrollbar-thumb,.rail::-webkit-scrollbar-thumb,.cmdlog::-webkit-scrollbar-thumb{
+  background:rgba(0,0,0,.18);border-radius:6px;border:2px solid transparent;background-clip:padding-box}
+.thread::-webkit-scrollbar-thumb:hover,.drawer__body::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.3);background-clip:padding-box}
+
+/* ── 响应式 ─────────────────────────────────────────────────────── */
+@media (max-width:1440px){
+  .bench{grid-template-columns:212px minmax(0,1fr) 382px}
+  .sent{grid-template-columns:48px 1fr;gap:10px}
+  .sent__body{font-size:14px}
+}
+@media (max-width:1180px){
+  .bench{grid-template-columns:minmax(0,1fr) 348px}
+  .rail{display:none}
+  .strip__guards{display:none}
+}
+@media (max-width:880px){
+  body{overflow:auto}
+  .bench{grid-template-columns:1fr;height:auto}
+  .stage{height:62vh}
+  .panel{height:auto;border-left:0;border-top:1px solid var(--hairline)}
+  .thread{max-height:none}
+  .strip{height:auto;flex-wrap:wrap;gap:10px;padding:8px 12px}
+  .vp__badge{max-width:70%}
+  .vp__rep{right:12px;top:12px}
+  .ruler__pointer span{display:none}
+}
+
+/* ── 降低动效 ───────────────────────────────────────────────────── */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important}
+  .thread{scroll-behavior:auto}
+}
+</style>
+</head>
+<body>
+
+<!-- ══ 顶层审计条：PRD NFR-5 / NFR-6 质量护栏常驻可见 ══ -->
+<header class="strip">
+  <div class="strip__brand">
+    <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+      <circle cx="16" cy="16" r="13.2" fill="none" stroke="currentColor" stroke-width="1.1" opacity=".45"/>
+      <circle cx="16" cy="16" r="7.4" fill="none" stroke="currentColor" stroke-width="1.1" opacity=".75"/>
+      <path d="M16 2.8v7M16 22.2v7M2.8 16h7M22.2 16h7" stroke="currentColor" stroke-width="1.1"/>
+      <circle cx="16" cy="16" r="2.3" fill="currentColor"/>
+    </svg>
+    <span class="wordmark">BioSynapse</span>
+    <span class="chip chip--ghost">v0.1.0-alpha</span>
+    <span class="chip chip--proto" title="本页为界面原型，全部讲解与证据为演示数据，尚未经过发布校验">PROTOTYPE · 演示数据</span>
+  </div>
+
+  <div class="strip__guards" role="status" aria-label="可审计性护栏">
+    <span class="guard"><i class="dot dot--ok"></i>无源断言 <b>0</b></span>
+    <span class="guard"><i class="dot dot--ok"></i>外链可解析 <b>100%</b></span>
+    <span class="guard"><i class="dot dot--warn"></i>引用支持率 <b>96.4%</b></span>
+    <span class="guard guard--quiet">巡检 12 分钟前 · 312 条引用</span>
+  </div>
+
+  <div class="strip__modes">
+    <div class="modeswitch" role="radiogroup" aria-label="讲解来源模式">
+      <button class="modeswitch__opt is-on" role="radio" aria-checked="true" data-mode="cache">缓存兜底</button>
+      <button class="modeswitch__opt" role="radio" aria-checked="false" data-mode="byok">BYOK</button>
+      <button class="modeswitch__opt" role="radio" aria-checked="false" data-mode="local">本地模型</button>
+    </div>
+    <button class="btn btn--ghost" id="btnSave">保存会话</button>
+  </div>
+</header>
+
+<main class="bench">
+
+  <!-- ══ 左栏：结构库 / 黄金场景 / 置信图例 / 会话 ══ -->
+  <aside class="rail" aria-label="导航与图例">
+
+    <section class="rail__block">
+      <h2 class="rail__title">结构库 <span>Top 50 预生成缓存</span></h2>
+      <div class="field">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M10.4 10.4 14 14" stroke="currentColor" stroke-width="1.3"/></svg>
+        <input id="libSearch" type="search" placeholder="PDB / UniProt / 基因名 / 蛋白名" aria-label="检索结构">
+      </div>
+      <ul class="preset" id="presetList"></ul>
+      <p class="rail__note">未命中时后端按需拉取 RCSB / AlphaFold / UniProt，失败则回落本地缓存并显式提示。</p>
+    </section>
+
+    <section class="rail__block">
+      <h2 class="rail__title">黄金场景 <span>端到端验收基准</span></h2>
+      <ol class="scenes" id="sceneList">
+        <li><button data-scene="s1"><b>S1</b><span>血红蛋白运氧</span><em>1HHO</em></button></li>
+        <li><button data-scene="s2"><b>S2</b><span>残基突变追问</span><em>His F8</em></button></li>
+        <li><button data-scene="s3"><b>S3</b><span>结构对比</span><em>vs 1MBO</em></button></li>
+        <li><button data-scene="s4"><b>S4</b><span>细胞器示意</span><em>线粒体</em></button></li>
+      </ol>
+    </section>
+
+    <section class="rail__block">
+      <h2 class="rail__title">置信层级</h2>
+      <ul class="legend">
+        <li><i class="stamp stamp--exp" aria-hidden="true"></i><span>实验证实</span><em>坐标/文献直接支持</em></li>
+        <li><i class="stamp stamp--con" aria-hidden="true"></i><span>领域共识</span><em>教科书级结论</em></li>
+        <li><i class="stamp stamp--pre" aria-hidden="true"></i><span>计算预测</span><em>须标注不确定性</em></li>
+      </ul>
+    </section>
+
+    <section class="rail__block rail__block--grow">
+      <h2 class="rail__title">会话 <span id="sessionCount">0 条</span></h2>
+      <ul class="sessions" id="sessionList"><li class="sessions__empty">尚无保存的会话</li></ul>
+      <div class="rail__actions">
+        <button class="btn btn--ghost btn--sm" id="btnExport" disabled>导出 JSON</button>
+      </div>
+    </section>
+
+    <footer class="rail__foot">
+      <span>Apache 2.0</span><span class="sep">·</span><span>内容 CC-BY 4.0</span>
+      <p>示意模型会在视口内持续声明，不表述为真实测定结构。</p>
+    </footer>
+  </aside>
+
+  <!-- ══ 中央：3D 视口 ══ -->
+  <section class="stage" aria-label="3D 结构工作台">
+    <div class="viewport" id="viewport">
+      <canvas id="scene" tabindex="0" aria-label="3D 结构画布（演示渲染）。可拖拽旋转、滚轮缩放、点击残基追问。"></canvas>
+
+      <div class="vp__grid" aria-hidden="true"></div>
+      <div class="vp__corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+
+      <div class="ruler ruler--top" aria-hidden="true"><span class="ruler__label">结构尺 · Å</span></div>
+      <div class="ruler ruler--left" aria-hidden="true">
+        <div class="ruler__pointer" id="residuePointer"><b id="residuePointerNum">—</b><span>残基</span></div>
+      </div>
+
+      <!-- 结构来源徽章：FR-3D-001 -->
+      <div class="vp__badge" id="structBadge" aria-live="polite">
+        <div class="badge__id">—</div>
+        <div class="badge__meta"></div>
+      </div>
+
+      <!-- 表示模式：FR-3D-003 -->
+      <div class="vp__rep">
+        <div class="seg" role="group" aria-label="表示模式">
+          <button class="seg__opt is-on" data-rep="cartoon" aria-pressed="true">卡通</button>
+          <button class="seg__opt" data-rep="ball-and-stick" aria-pressed="false">球棍</button>
+          <button class="seg__opt" data-rep="spacefill" aria-pressed="false">空间填充</button>
+          <button class="seg__opt" data-rep="surface" aria-pressed="false">表面</button>
+        </div>
+        <label class="scope"><input type="checkbox" id="scopeSel"> 仅作用于当前选择</label>
+      </div>
+
+      <!-- 示意声明：FR-ORG-002 / FR-PROC-003 -->
+      <div class="vp__decl" id="declBar" hidden>
+        <span class="decl__stripes" aria-hidden="true"></span>
+        <span class="decl__text" id="declText">示意模型 · 非真实结构</span>
+        <span class="decl__ref">FR-ORG-002</span>
+      </div>
+
+      <!-- 读数：相机 / 帧率 -->
+      <div class="vp__hud" id="hud" aria-hidden="true">
+        <span><b id="hudZoom">1.00×</b> 缩放</span>
+        <span><b id="hudFps">–</b> fps</span>
+        <span><b id="hudPrim">–</b> 图元</span>
+      </div>
+
+      <!-- 视口工具 -->
+      <div class="vp__tools">
+        <button class="tool" id="btnReset" title="重置视角">
+          <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3.5 9a5.5 5.5 0 1 0 1.7-3.9" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M3 3v3.2h3.2" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
+          重置视角
+        </button>
+        <button class="tool" id="btnFocus" title="聚焦当前选择">
+          <svg viewBox="0 0 18 18" aria-hidden="true"><circle cx="9" cy="9" r="4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M9 1v3M9 14v3M1 9h3M14 9h3" stroke="currentColor" stroke-width="1.4"/></svg>
+          聚焦
+        </button>
+        <button class="tool" id="btnCompare" aria-pressed="false" title="并排对比">
+          <svg viewBox="0 0 18 18" aria-hidden="true"><rect x="1.5" y="3" width="6.5" height="12" fill="none" stroke="currentColor" stroke-width="1.4"/><rect x="10" y="3" width="6.5" height="12" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
+          并排对比
+        </button>
+        <button class="tool tool--toggle is-on" id="btnLinkCam" aria-pressed="true" title="两视图相机联动" hidden>
+          <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M7 5H4.5A2.5 2.5 0 0 0 4.5 10H7M11 13h2.5a2.5 2.5 0 0 0 0-5H11" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6 7.5h6" stroke="currentColor" stroke-width="1.4"/></svg>
+          相机联动
+        </button>
+      </div>
+
+      <!-- 点击拾取卡片：FR-3D-005 Click-to-Ask -->
+      <div class="pick" id="pickCard" hidden>
+        <div class="pick__head">
+          <span class="pick__site" id="pickSite">—</span>
+          <button class="pick__close" id="pickClose" aria-label="关闭">×</button>
+        </div>
+        <p class="pick__map" id="pickMap">—</p>
+        <div class="pick__acts">
+          <button class="btn btn--ink btn--sm" id="pickAsk">问一问这个位点</button>
+          <button class="btn btn--ghost btn--sm" id="pickClear">清除高亮</button>
+        </div>
+      </div>
+
+      <!-- 加载态：FR-3D-001 -->
+      <div class="vp__loading" id="loading" hidden>
+        <div class="load__bar"><i></i></div>
+        <p class="load__step" id="loadStep">连接 RCSB PDB…</p>
+        <p class="load__meta" id="loadMeta">演示数据 · 不发起真实网络请求</p>
+      </div>
+
+      <!-- 空态 -->
+      <div class="vp__empty" id="emptyState">
+        <svg viewBox="0 0 48 48" aria-hidden="true">
+          <circle cx="24" cy="24" r="18" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="2 3"/>
+          <circle cx="24" cy="24" r="9" fill="none" stroke="currentColor" stroke-width="1" opacity=".6"/>
+          <path d="M24 6v9M24 33v9M6 24h9M33 24h9" stroke="currentColor" stroke-width="1" opacity=".6"/>
+        </svg>
+        <p>在右侧提问，或输入 <b>1HHO</b> 开始</p>
+        <button class="btn btn--ink btn--sm" data-scene="s1">运行黄金场景 S1</button>
+      </div>
+    </div>
+
+    <!-- 舞台底栏：当前选择 + 站点映射 + 指令日志（§6 结构化指令契约可见化） -->
+    <div class="stagebar">
+      <div class="selection" id="selectionBar">
+        <span class="selection__none">未选择任何位点</span>
+      </div>
+      <button class="logtoggle" id="logToggle" aria-expanded="false" aria-controls="cmdLog">指令日志 <b id="cmdCount">0</b></button>
+    </div>
+    <div class="cmdlog" id="cmdLog" hidden aria-live="polite"><ol id="cmdList"></ol></div>
+  </section>
+
+  <!-- ══ 右栏：讲解（批注本） + 对话 + 证据抽屉 ══ -->
+  <aside class="panel" aria-label="讲解与对话">
+
+    <div class="panel__head">
+      <div class="panel__tabs" role="tablist" aria-label="面板">
+        <button role="tab" class="panel__tab is-on" id="tabNarr" aria-selected="true">讲解</button>
+        <button role="tab" class="panel__tab" id="tabEvid" aria-selected="false">证据</button>
+      </div>
+      <div class="panel__ctx" id="panelCtx">上下文：—</div>
+    </div>
+
+    <div class="thread" id="thread" role="log" aria-live="polite" aria-label="讲解与对话记录">
+      <div class="thread__intro">
+        <h3>可审计的教学闭环</h3>
+        <p>提问一个生物大分子 → 3D 结构出现 → 关键部位高亮 → AI 讲 3–5 句 → 每条断言可点开证据 → 可追问 → 可保存恢复。</p>
+        <p class="thread__hint">演示数据已标注，<b>不发起真实模型调用</b>。</p>
+      </div>
+    </div>
+
+    <div class="drawer" id="drawer" hidden aria-label="证据抽屉">
+      <div class="drawer__head">
+        <div>
+          <p class="drawer__kicker">证据抽屉 · EVIDENCE</p>
+          <h3 class="drawer__title" id="drawerTitle">—</h3>
+        </div>
+        <button class="drawer__close" id="drawerClose" aria-label="关闭证据抽屉">×</button>
+      </div>
+      <div class="drawer__body" id="drawerBody"></div>
+    </div>
+
+    <div class="composer">
+      <div class="quick" id="quickChips">
+        <button data-say="突变会怎样？">突变会怎样？</button>
+        <button data-say="和肌红蛋白比呢？">和肌红蛋白比呢？</button>
+        <button data-say="线粒体长什么样？">线粒体长什么样？</button>
+        <button data-say="打开证据">打开证据</button>
+      </div>
+      <div class="composer__box">
+        <textarea id="input" rows="2" placeholder="问一个结构、一个位点，或一个过程…" aria-label="提问"></textarea>
+        <button class="send" id="btnSend" aria-label="发送">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2.5 10 17 3.5 12.8 17 9.6 11.4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+      <p class="composer__hint" id="composerHint">Enter 发送 · Shift+Enter 换行</p>
+    </div>
+  </aside>
+</main>
+
+<noscript><p class="noscript">本原型需要 JavaScript 才能运行。</p></noscript>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════
+   data.js · 原型演示数据（MOCK）
+   ──────────────────────────────────────────────────────────────────
+   重要：本文件全部为原型演示数据，不发起任何真实网络请求。
+   - 结构几何为程序化生成的"类真实"坐标，用于界面与交互验证
+   - 证据条目统一带 verified:false，UI 会显示"演示数据 · 未校验"
+   - 科学结论取自教科书级共识；引文为摘译占位，解析与校验管线尚未接入
+   ══════════════════════════════════════════════════════════════════ */
+
+const MOCK_META = {
+  prototype: true,
+  dataset: '演示数据 · 未经发布校验',
+  note: '无源断言校验、链接巡检、引用抽检均由后端管线在真实环境中执行'
+};
+
+/* ── 结构库 ─────────────────────────────────────────────────────── */
+const PRESETS = [
+  { id:'1HHO',          kind:'structure', name:'脱氧血红蛋白',        tag:'PDB · 缓存', short:'1HHO' },
+  { id:'1MBO',          kind:'structure', name:'肌红蛋白（抹香鲸）',  tag:'PDB · 缓存', short:'1MBO' },
+  { id:'AF-P69905',     kind:'structure', name:'血红蛋白 α 链',       tag:'AlphaFold',  short:'AF'   },
+  { id:'mitochondrion', kind:'organelle', name:'线粒体',              tag:'示意',       short:'ORG'  },
+  { id:'catalysis',     kind:'process',   name:'酶催化循环',          tag:'示意',       short:'PROC' }
+];
+
+/* ── 结构 ───────────────────────────────────────────────────────── */
+const STRUCTURES = {
+
+  '1HHO': {
+    id:'1HHO',
+    title:'人脱氧血红蛋白 · α₂β₂ 四聚体',
+    source:'PDB',
+    geom:{ kind:'globin', seed:1207,
+      chains:[ {id:'A', label:'α1', offset:0}, {id:'B', label:'β1', offset:1},
+               {id:'C', label:'α2', offset:0}, {id:'D', label:'β2', offset:1} ] },
+    meta:[
+      { k:'来源', v:'RCSB PDB', kind:'ok' },
+      { k:'方法', v:'X 射线衍射' },
+      { k:'分辨率', v:'1.74 Å' },
+      { k:'尺度', v:'纳米 (10⁻⁹ m)' },
+      { k:'单位', v:'Å' },
+      { k:'坐标系', v:'右手正交（PDB）' },
+      { k:'许可', v:'PDB · CC0' },
+      { k:'取回时间', v:'2026-10-03 09:12 UTC' }
+    ],
+    uniprot:{ chainA:'P69905', chainB:'P68871' },
+    sites:{
+      'heme-A': { label:'血红素 (链 A)', kind:'heme', chain:'A', resi:87, text:'血红素 b · 原卟啉 IX + Fe²⁺' },
+      'heme-B': { label:'血红素 (链 B)', kind:'heme', chain:'B', resi:92, text:'血红素 b · 原卟啉 IX + Fe²⁺' },
+      'heme-C': { label:'血红素 (链 C)', kind:'heme', chain:'C', resi:87, text:'血红素 b · 原卟啉 IX + Fe²⁺' },
+      'heme-D': { label:'血红素 (链 D)', kind:'heme', chain:'D', resi:92, text:'血红素 b · 原卟啉 IX + Fe²⁺' },
+      'his87':  { label:'His87 · F8 近端组氨酸', kind:'residue', chain:'A', resi:87, resn:'HIS', text:'近端配体，第五配位键' },
+      'his58':  { label:'His58 · E7 远端组氨酸', kind:'residue', chain:'A', resi:58, resn:'HIS', text:'稳定结合的氧，抑制氧化' },
+      'his92':  { label:'His92 · F8 近端组氨酸', kind:'residue', chain:'B', resi:92, resn:'HIS', text:'β 链近端配体' },
+      'his63':  { label:'His63 · E7 远端组氨酸', kind:'residue', chain:'B', resi:63, resn:'HIS', text:'β 链远端组氨酸' },
+      'his146': { label:'His146 · HC3',          kind:'residue', chain:'B', resi:146, resn:'HIS', text:'波尔效应关键残基' },
+      'interface':{ label:'α₁β₂ 界面',            kind:'region',  chain:'A', resi:41, resn:'—',  text:'协同效应的构象传递界面' },
+      'cavity': { label:'中央腔 (2,3-BPG 位点)',  kind:'region',  chain:'B', resi:2,  resn:'—',  text:'结合 2,3-BPG，稳定紧张态' }
+    }
+  },
+
+  '1MBO': {
+    id:'1MBO',
+    title:'抹香鲸氧合肌红蛋白 · 单链',
+    source:'PDB',
+    geom:{ kind:'globin', seed:807,
+      chains:[ {id:'A', label:'单链', offset:1} ] },
+    meta:[
+      { k:'来源', v:'RCSB PDB', kind:'ok' },
+      { k:'方法', v:'X 射线衍射' },
+      { k:'分辨率', v:'1.40 Å' },
+      { k:'尺度', v:'纳米 (10⁻⁹ m)' },
+      { k:'单位', v:'Å' },
+      { k:'许可', v:'PDB · CC0' },
+      { k:'取回时间', v:'2026-10-03 09:12 UTC' }
+    ],
+    uniprot:{ chainA:'P02185' },
+    sites:{
+      'heme-A': { label:'血红素 (单链)', kind:'heme', chain:'A', resi:93, text:'氧合态 · Fe²⁺–O₂' },
+      'his93':  { label:'His93 · F8 近端组氨酸', kind:'residue', chain:'A', resi:93, resn:'HIS', text:'近端配体' },
+      'his64':  { label:'His64 · E7 远端组氨酸', kind:'residue', chain:'A', resi:64, resn:'HIS', text:'氢键稳定结合的氧' }
+    }
+  },
+
+  'AF-P69905': {
+    id:'AF-P69905',
+    title:'血红蛋白 α 链 · AlphaFold 预测模型',
+    source:'AlphaFold',
+    geom:{ kind:'globin', seed:4417,
+      chains:[ {id:'A', label:'预测单链', offset:0} ] },
+    meta:[
+      { k:'来源', v:'AlphaFold DB', kind:'pred' },
+      { k:'性质', v:'预测结构 · 非实验测定', kind:'pred' },
+      { k:'pLDDT', v:'96.4（整体，很可信）', kind:'pred' },
+      { k:'尺度', v:'纳米 (10⁻⁹ m)' },
+      { k:'单位', v:'Å' },
+      { k:'许可', v:'CC-BY 4.0' },
+      { k:'取回时间', v:'2026-10-03 09:14 UTC' }
+    ],
+    uniprot:{ chainA:'P69905' },
+    sites:{
+      'heme-A': { label:'血红素结合口袋', kind:'region', chain:'A', resi:87, text:'配体未建模，仅预测蛋白部分' },
+      'his87':  { label:'His87 · F8',  kind:'residue', chain:'A', resi:87, resn:'HIS', text:'pLDDT 97.1 · 高可信' }
+    }
+  },
+
+  'mitochondrion': {
+    id:'mitochondrion',
+    title:'线粒体 · 程序化教学示意',
+    source:'示意',
+    geom:{ kind:'organelle', seed:33 },
+    declare:'示意模型 · 非真实结构',
+    declareRef:'FR-ORG-002',
+    meta:[
+      { k:'来源', v:'程序化生成', kind:'warn' },
+      { k:'性质', v:'教学示意 · 非实测结构', kind:'warn' },
+      { k:'尺度', v:'示意尺度（未按真实比例）', kind:'warn' },
+      { k:'依据', v:'教科书级结构描述' }
+    ],
+    sites:{
+      'outer':   { label:'外膜',        kind:'region', text:'平滑的脂双层，含孔蛋白' },
+      'inner':   { label:'内膜',        kind:'region', text:'通透性屏障，电子传递链所在' },
+      'cristae': { label:'嵴',          kind:'region', text:'内膜内折，放大膜面积' },
+      'matrix':  { label:'基质',        kind:'region', text:'三羧酸循环酶系所在' },
+      'mtdna':   { label:'线粒体 DNA',  kind:'region', text:'环状基因组 · 拟核' }
+    }
+  },
+
+  'catalysis': {
+    id:'catalysis',
+    title:'酶催化循环 · 分步教学示意',
+    source:'示意',
+    geom:{ kind:'process', seed:9 },
+    declare:'教学示意 · 非动力学模拟',
+    declareRef:'FR-PROC-003',
+    meta:[
+      { k:'来源', v:'教学动画脚本', kind:'warn' },
+      { k:'性质', v:'示意 · 不含动力学参数', kind:'warn' },
+      { k:'步骤', v:'4 步' },
+      { k:'依据', v:'教科书级机制描述' }
+    ],
+    sites:{
+      'site':    { label:'活性位点', kind:'region', text:'催化基团所在的凹槽' },
+      'substrate':{ label:'底物',    kind:'region', text:'被转化的分子' },
+      'product': { label:'产物',     kind:'region', text:'转化后的分子' }
+    }
+  }
+};
+
+/* ── 证据条目 ──────────────────────────────────────────────────── */
+/* verified:false ⇒ UI 显示"演示数据 · 未校验"；真实环境由后端巡检替换 */
+const SRC = {
+  pdb1hho: { id:'s_pdb_1hho', type:'PDB', ref:'1HHO',
+    title:'Fermi 等，人脱氧血红蛋白晶体结构（1.74 Å）',
+    locator:'坐标文件全量 · 链 A–D',
+    quote:'四条链各含一枚血红素；近端组氨酸位于 F 螺旋第 8 位。',
+    quoteKind:'摘译（演示占位）',
+    locatorType:'坐标记录',
+    support:'直接支持：结构组成与位点几何',
+    lv:'实验证实',
+    url:'https://www.rcsb.org/structure/1HHO', proxy:'/go/pdb/1HHO',
+    license:'PDB · CC0', retrievedAt:'2026-10-03 09:12 UTC', verified:false },
+
+  pdb1mbo: { id:'s_pdb_1mbo', type:'PDB', ref:'1MBO',
+    title:'抹香鲸氧合肌红蛋白晶体结构',
+    locator:'坐标文件全量 · 单链',
+    quote:'单条珠蛋白链折叠成八段 α 螺旋，中央包埋一枚血红素。',
+    quoteKind:'摘译（演示占位）',
+    locatorType:'坐标记录',
+    support:'直接支持：单亚基组成与折叠',
+    lv:'实验证实',
+    url:'https://www.rcsb.org/structure/1MBO', proxy:'/go/pdb/1MBO',
+    license:'PDB · CC0', retrievedAt:'2026-10-03 09:12 UTC', verified:false },
+
+  up_alpha: { id:'s_up_p69905', type:'UniProt', ref:'P69905',
+    title:'HBA_HUMAN · 血红蛋白 α 链（141 aa）',
+    locator:'Sequence & variants 章节',
+    quote:'成熟 α 链为 141 个残基；F8 组氨酸对应第 87 位。',
+    quoteKind:'摘译（演示占位）',
+    locatorType:'条目章节',
+    support:'支持：序列长度与位点编号对齐',
+    lv:'实验证实',
+    url:'https://www.uniprot.org/uniprotkb/P69905/entry', proxy:'/go/uniprot/P69905',
+    license:'UniProt · CC-BY 4.0', retrievedAt:'2026-10-03 09:13 UTC', verified:false },
+
+  up_beta: { id:'s_up_p68871', type:'UniProt', ref:'P68871',
+    title:'HBB_HUMAN · 血红蛋白 β 链（146 aa）',
+    locator:'Sequence & variants 章节',
+    quote:'β 链 F8 组氨酸对应第 92 位；C 端 His146 参与波尔效应。',
+    quoteKind:'摘译（演示占位）',
+    locatorType:'条目章节',
+    support:'支持：β 链编号与功能位点',
+    lv:'实验证实',
+    url:'https://www.uniprot.org/uniprotkb/P68871/entry', proxy:'/go/uniprot/P68871',
+    license:'UniProt · CC-BY 4.0', retrievedAt:'2026-10-03 09:13 UTC', verified:false },
+
+  up_myo: { id:'s_up_p02185', type:'UniProt', ref:'P02185',
+    title:'MYG_PHYCD · 抹香鲸肌红蛋白',
+    locator:'Sequence 章节',
+    quote:'单链珠蛋白，第 93 位组氨酸为近端配体。',
+    quoteKind:'摘译（演示占位）',
+    locatorType:'条目章节',
+    support:'支持：肌红蛋白单链与近端位点',
+    lv:'实验证实',
+    url:'https://www.uniprot.org/uniprotkb/P02185/entry', proxy:'/go/uniprot/P02185',
+    license:'UniProt · CC-BY 4.0', retrievedAt:'2026-10-03 09:13 UTC', verified:false },
+
+  doi_perutz: { id:'s_doi_perutz1970', type:'DOI', ref:'10.1038/228726a0',
+    title:'Perutz, Stereochemistry of cooperative effects in haemoglobin, Nature 228:726',
+    locator:'pp. 726–730 · 构象传递示意',
+    quote:'氧合引起铁原子位移，并沿 F 螺旋与亚基界面传递构象变化，从而解释协同效应。',
+    quoteKind:'摘译（演示占位）',
+    locatorType:'页码段落',
+    support:'机制支持：协同效应的结构解释',
+    lv:'领域共识',
+    url:'https://doi.org/10.1038/228726a0', proxy:'/go/doi/10.1038/228726a0',
+    license:'Nature · 阅读需订阅', retrievedAt:'2026-10-03 09:15 UTC', verified:false },
+
+  doi_review: { id:'s_doi_allostery', type:'DOI', ref:'10.1007/s00232-020-00130-5',
+    title:'血红蛋白变构作用综述（演示占位文献）',
+    locator:'变构模型章节',
+    quote:'两态模型仍是教学主线，但其动力学细节在后续工作中被持续修正。',
+    quoteKind:'摘译（演示占位）',
+    locatorType:'章节',
+    support:'背景支持：模型边界与不确定性',
+    lv:'领域共识',
+    url:'https://doi.org/10.1007/s00232-020-00130-5', proxy:'/go/doi/10.1007/s00232-020-00130-5',
+    license:'Springer · 阅读需订阅', retrievedAt:'2026-10-03 09:15 UTC', verified:false },
+
+  aphafold: { id:'s_af_p69905', type:'DOI', ref:'AF-P69905-F1',
+    title:'AlphaFold DB · 血红蛋白 α 链预测模型',
+    locator:'模型 v4 · 逐残基 pLDDT',
+    quote:'预测模型在珠蛋白核心区置信度很高，但配体与金属离子通常不建模。',
+    quoteKind:'摘译（演示占位）',
+    locatorType:'模型文件',
+    support:'支持：预测性质与不确定性标注',
+    lv:'计算预测',
+    url:'https://alphafold.ebi.ac.uk/entry/P69905', proxy:'/go/alphafold/P69905',
+    license:'CC-BY 4.0', retrievedAt:'2026-10-03 09:14 UTC', verified:false },
+
+  book_mito: { id:'s_mito_text', type:'DOI', ref:'MOOC-MITO-DEMO',
+    title:'细胞器结构教学条目（示意依据 · 演示占位）',
+    locator:'结构描述段落',
+    quote:'线粒体由外膜、内膜与基质组成，内膜内折形成嵴以扩大反应面积。',
+    quoteKind:'摘译（演示占位）',
+    locatorType:'教学条目',
+    support:'支持：示意模型的结构依据',
+    lv:'领域共识',
+    url:'https://doi.org/10.1000/demo.mitochondrion', proxy:'/go/doi/10.1000/demo.mitochondrion',
+    license:'演示条目 · 非真实 DOI', retrievedAt:'2026-10-03 09:20 UTC', verified:false },
+
+  book_enzyme: { id:'s_enzyme_text', type:'DOI', ref:'MOOC-ENZYME-DEMO',
+    title:'酶催化机制教学条目（示意依据 · 演示占位）',
+    locator:'催化循环段落',
+    quote:'酶的活性位点通过结合能稳定过渡态，从而降低反应活化能。',
+    quoteKind:'摘译（演示占位）',
+    locatorType:'教学条目',
+    support:'支持：分步示意与机制描述',
+    lv:'领域共识',
+    url:'https://doi.org/10.1000/demo.enzyme', proxy:'/go/doi/10.1000/demo.enzyme',
+    license:'演示条目 · 非真实 DOI', retrievedAt:'2026-10-03 09:20 UTC', verified:false }
+};
+
+/* ── 讲解脚本：每句 = 一条断言（claim） ─────────────────────────── */
+/* sites: 该句在 3D 中要点亮的位点；focus: 相机聚焦目标 */
+const SCRIPTS = {
+
+  s1: {
+    id:'s1', structure:'1HHO', rep:'cartoon', tone:'cache',
+    modelRun:{ model:'预生成缓存 · BS-EDU-v1', mode:'cache',
+      promptHash:'sha256:9f2c41b7…a71d', params:{ temperature:0.2, top_p:0.9, max_tokens:640 },
+      generatedAt:'2026-09-28 04:10 UTC', reviewedBy:'科学复核 · 已通过（演示）' },
+    title:'血红蛋白怎么运氧',
+    sentences:[
+      { claim:'c_1hho_01', lv:'实验证实', text:'血红蛋白是一个 α₂β₂ 四聚体：两条 α 链与两条 β 链各自折叠成珠蛋白螺旋束，每个亚基的中央都嵌着一枚血红素。',
+        sites:['heme-A','heme-B','heme-C','heme-D'], focus:'heme-A', rep:'cartoon', ev:[SRC.pdb1hho, SRC.up_alpha] },
+
+      { claim:'c_1hho_02', lv:'实验证实', text:'每个血红素的中心是一枚亚铁离子 Fe²⁺，被四个吡咯氮锁在环心；近端组氨酸 F8 再从下方补上第五个配位键。',
+        sites:['heme-A','his87'], focus:'his87', rep:'ball-and-stick', ev:[SRC.pdb1hho, SRC.up_alpha] },
+
+      { claim:'c_1hho_03', lv:'领域共识', text:'第六个配位点留给氧：氧结合时把铁原子拉回环平面，这点小到不足 0.1 纳米的位移会沿 F 螺旋传下去，撬动整个亚基。',
+        sites:['his87','heme-A'], focus:'heme-A', rep:'ball-and-stick', ev:[SRC.doi_perutz, SRC.pdb1hho] },
+
+      { claim:'c_1hho_04', lv:'领域共识', text:'一个氧的结合会把其余亚基从紧张态推向松弛态，让它们对氧的亲和力升高——这就是协同效应，也是氧解离曲线呈 S 形的原因。',
+        sites:['interface','heme-B','heme-C'], focus:'interface', rep:'cartoon', ev:[SRC.doi_perutz, SRC.doi_review] },
+
+      { claim:'c_1hho_05', lv:'领域共识', text:'于是它能在肺部装满氧、在组织卸下氧；2,3-BPG 与波尔效应再各推一把——后者靠的正是 β 链 C 端的 His146。',
+        sites:['cavity','his146'], focus:'cavity', rep:'cartoon', ev:[SRC.up_beta, SRC.doi_review] },
+
+      { claim:'c_1hho_06', lv:'实验证实', text:'看哪里：先看链 A 中央那枚血红素与它正下方的 His87（F8），再整体旋转四聚体——四个血红素的位置，本身就是协同效应的舞台。',
+        sites:['heme-A','his87','heme-B','heme-C','heme-D'], focus:'heme-A', rep:'cartoon', ev:[SRC.pdb1hho] }
+    ]
+  },
+
+  s2: {
+    id:'s2', structure:'1HHO', rep:'ball-and-stick', tone:'byok',
+    modelRun:{ model:'BYOK · 演示模型 A（能力契约：流式/函数调用/结构化输出）', mode:'byok',
+      promptHash:'sha256:41ad9c02…e3b8', params:{ temperature:0.1, top_p:0.9, max_tokens:600 },
+      generatedAt:'2026-10-03 09:31 UTC', reviewedBy:'自动校验通过 · 待人工抽检' },
+    title:'His F8 突变会怎样',
+    sentences:[
+      { claim:'c_1hho_m1', lv:'实验证实', text:'你选中的是 α 链第 87 位组氨酸，也就是珠蛋白命名法里的 F8：它是血红素的近端配体。',
+        sites:['his87','heme-A'], focus:'his87', ev:[SRC.pdb1hho, SRC.up_alpha] },
+
+      { claim:'c_1hho_m2', lv:'领域共识', text:'把 F8 换成酪氨酸后，铁原子会被额外配位并被稳定成 Fe³⁺，血红素就失去了可逆结合氧的能力——这类变异常被称为 M 型血红蛋白。',
+        sites:['his87','heme-A'], focus:'his87', ev:[SRC.up_alpha, SRC.doi_review] },
+
+      { claim:'c_1hho_m3', lv:'领域共识', text:'另一侧的远端 His58（E7）不直接接触铁，却负责稳住结合的氧、抑制氧化；它被替换同样会推向高铁血红蛋白。',
+        sites:['his58','heme-A'], focus:'his58', ev:[SRC.up_alpha, SRC.doi_perutz] },
+
+      { claim:'c_1hho_m4', lv:'领域共识', text:'因此这两个位点的替换都会破坏"亚铁—氧"的可逆平衡，表现为氧亲和力下降与发绀；具体临床判断需要专业检查，教材层面只到机制为止。',
+        sites:['heme-A'], focus:'heme-A', ev:[SRC.doi_review, SRC.up_alpha] },
+
+      { claim:'c_1hho_m5', lv:'计算预测', text:'看哪里：切成球棍表示，量一量 His87 咪唑环与铁之间的轴向距离——预测模型给出的数值与实验结构存在零点几埃的差异。',
+        sites:['his87'], focus:'his87', rep:'ball-and-stick', ev:[SRC.aphafold] }
+    ]
+  },
+
+  s3: {
+    id:'s3', structure:'1HHO', compare:'1MBO', rep:'cartoon', tone:'cache',
+    modelRun:{ model:'预生成缓存 · BS-EDU-v1', mode:'cache',
+      promptHash:'sha256:77b1e5aa…c204', params:{ temperature:0.2, top_p:0.9, max_tokens:620 },
+      generatedAt:'2026-09-28 04:12 UTC', reviewedBy:'科学复核 · 已通过（演示）' },
+    title:'血红蛋白 vs 肌红蛋白',
+    sentences:[
+      { claim:'c_cmp_01', lv:'实验证实', text:'肌红蛋白只有一条链、一枚血红素，是单亚基的储氧蛋白；血红蛋白是 α₂β₂ 四聚体，因此才拿到了协同效应这件新能力。',
+        sites:['heme-A'], focus:'heme-A', ev:[SRC.pdb1mbo, SRC.pdb1hho] },
+
+      { claim:'c_cmp_02', lv:'领域共识', text:'两者的珠蛋白折叠几乎同源：都是八段 α 螺旋围出一个疏水口袋——这是"结构保守、功能分化"最经典的教科书例子。',
+        sites:['heme-A'], focus:'heme-A', rep:'cartoon', ev:[SRC.up_myo, SRC.up_alpha] },
+
+      { claim:'c_cmp_03', lv:'实验证实', text:'看哪里：打开相机联动旋转，把 1MBO 的单链与 1HHO 的链 A 对着看——螺旋束几乎可以重叠，差别落在界面与构象转换能力上。',
+        sites:['his87','heme-A'], focus:'his87', ev:[SRC.pdb1mbo, SRC.pdb1hho] }
+    ]
+  },
+
+  s4: {
+    id:'s4', structure:'mitochondrion', rep:'schematic', tone:'cache',
+    modelRun:{ model:'预生成缓存 · BS-EDU-v1（示意内容）', mode:'cache',
+      promptHash:'sha256:2c9de110…9f31', params:{ temperature:0.2, top_p:0.9, max_tokens:560 },
+      generatedAt:'2026-09-28 04:20 UTC', reviewedBy:'科学复核 · 已通过（演示）' },
+    title:'线粒体长什么样',
+    sentences:[
+      { claim:'c_mito_01', lv:'领域共识', text:'线粒体是双层膜的细胞器：外膜平滑，内膜向基质一侧反复内折，形成一层层嵴。',
+        sites:['outer','inner'], focus:'inner', ev:[SRC.book_mito] },
+
+      { claim:'c_mito_02', lv:'领域共识', text:'内折把内膜面积放大了数倍，为电子传递链复合体与 ATP 合酶提供排布空间——面积就是产能的物理前提。',
+        sites:['cristae'], focus:'cristae', ev:[SRC.book_mito] },
+
+      { claim:'c_mito_03', lv:'领域共识', text:'内膜两侧的质子梯度驱动 ATP 合酶旋转催化，这就是化学渗透偶联：先把能量存成梯度，再兑换成 ATP。',
+        sites:['inner','cristae'], focus:'cristae', ev:[SRC.book_mito] },
+
+      { claim:'c_mito_04', lv:'领域共识', text:'基质里装着三羧酸循环的酶系，还有一小圈属于自己的环状 DNA（拟核），这也是线粒体被看作内共生后代的理由之一。',
+        sites:['matrix','mtdna'], focus:'mtdna', ev:[SRC.book_mito] },
+
+      { claim:'c_mito_05', lv:'领域共识', text:'看哪里：点亮"内膜/嵴"，注意嵴把膜空间切成了许多相邻腔室——膜面积、腔室数量与产能效率在这里是同一件事。',
+        sites:['cristae','inner'], focus:'cristae', ev:[SRC.book_mito] }
+    ]
+  },
+
+  proc: {
+    id:'proc', structure:'catalysis', rep:'schematic', tone:'cache',
+    modelRun:{ model:'预生成缓存 · BS-EDU-v1（示意内容）', mode:'cache',
+      promptHash:'sha256:5be07a3c…77aa', params:{ temperature:0.2, top_p:0.9, max_tokens:520 },
+      generatedAt:'2026-09-28 04:24 UTC', reviewedBy:'科学复核 · 已通过（演示）' },
+    title:'酶催化循环 · 分步',
+    steps:[
+      { n:0, name:'游离', claim:'c_enz_01', lv:'领域共识',
+        text:'底物在溶液里随机碰撞酶的表面——绝大多数碰撞什么也不会发生，因为跨越活化能垒需要一次"刚刚好"的接触。',
+        sites:['site','substrate'], ev:[SRC.book_enzyme] },
+      { n:1, name:'结合', claim:'c_enz_02', lv:'领域共识',
+        text:'底物落进活性位点，被几个残基的侧链用氢键和疏水作用固定住；这一步释放的结合能，正是后面降低能垒的本钱。',
+        sites:['site','substrate'], ev:[SRC.book_enzyme] },
+      { n:2, name:'转化', claim:'c_enz_03', lv:'领域共识',
+        text:'催化基团给出或接受质子，化学键被重排；过渡态被优先稳定，于是反应走了一条低得多的路径。',
+        sites:['site','substrate'], ev:[SRC.book_enzyme] },
+      { n:3, name:'释放', claim:'c_enz_04', lv:'领域共识',
+        text:'产物离开活性位点，酶恢复原状，可以立刻进入下一轮循环——这就是酶以极低用量反复催化的原因。',
+        sites:['site','product'], ev:[SRC.book_enzyme] }
+    ]
+  }
+};
+
+/* ── 消歧候选（FR-CHAT-002） ───────────────────────────────────── */
+const CANDIDATES = {
+  hemoglobin:[
+    { id:'1HHO',      name:'人脱氧血红蛋白',        src:'PDB · α₂β₂ 四聚体' },
+    { id:'AF-P69905', name:'血红蛋白 α 链（预测）', src:'AlphaFold · pLDDT 96.4' },
+    { id:'1MBO',      name:'肌红蛋白（抹香鲸）',    src:'PDB · 单链' }
+  ],
+  myoglobin:[
+    { id:'1MBO',      name:'抹香鲸氧合肌红蛋白',    src:'PDB · 单链' },
+    { id:'AF-P69905', name:'血红蛋白 α 链（预测）', src:'AlphaFold · 近缘折叠' }
+  ]
+};
+
+/* ── 输入意图（原型用关键词路由，真实环境在服务端做意图解析） ──── */
+const INTENTS = [
+  { id:'load_1hho',  re:/1hho|血红蛋白|hemoglobin|运氧|载氧|协同|波尔|bohr|bpg|变构/i },
+  { id:'mutation',   re:/突变|替换|变异|mutation|换成|点了|这个位点/i },
+  { id:'compare',    re:/对比|比呢|比较|并排|肌红蛋白|1mbo|myoglobin/i },
+  { id:'organelle',  re:/线粒体|细胞器|mitochond|内膜|嵴|基质|细胞核|高尔基|内质网|溶酶体|核糖体|叶绿体/i },
+  { id:'process',    re:/酶|催化|过程|步骤|动画|循环|atp|复制|转录|翻译|信号/i },
+  { id:'predict',    re:/alphafold|预测结构|plddt|预测模型|af-/i },
+  { id:'evidence',   re:/证据|来源|出处|引用|文献|pmid|doi|怎么知道/i },
+  { id:'save',       re:/保存|存档|记录会话/i },
+  { id:'restore',    re:/恢复|打开会话|继续上次/i },
+  { id:'focus',      re:/his\s?\d+|组氨酸|残基\s?\d+|第\s?\d+\s?位/i },
+  { id:'dualuse',    re:/增强致病|致病性增强|设计引物|合成基因|改造病毒|毒性增强|逃逸疫苗|气溶胶/i },
+  { id:'unsupported',re:/存活率|预后|该用什么药|剂量|临床诊断/i }
+];
+
+/* ── 安全策略命中演示（SAFE-001 / SAFE-002） ───────────────────── */
+const SAFETY = {
+  denyTitle:'请求已进入受控流程',
+  denyBody:'输入筛查命中双重用途关键词。按设计，最终安全判定只在后端执行，前端不参与放行；本次请求不会被模型处理。',
+  trace:[
+    'safety.gateway · 输入筛查 · 命中',
+    'policy.decision · REFUSE_CONTROLLED_PATH',
+    'audit.log · 已留痕（不可由普通用户删除）',
+    'human.review · 已入复核队列（SAFE-003）'
+  ]
+};
+</script>
+<script>
+/* ══════════════════════════════════════════════════════════════════
+   renderer.js · 轻量伪 3D 渲染引擎（零依赖）
+   ──────────────────────────────────────────────────────────────────
+   原型用途：自研投影 + 画家算法，替代真实分子渲染框架，用于验证
+   「状态单源 → 指令化执行 → 渲染器只读」的边界（见 ADR-0001）。
+   真实工程中该层由分子渲染框架承担，接口形状保持一致：
+     setScene / setRepresentation / setHighlight / focusSite / pick / snapshot
+   渲染器不持有应用状态，只接受指令并回传投影信息。
+   ══════════════════════════════════════════════════════════════════ */
+
+const V3 = {
+  add:(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]],
+  sub:(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]],
+  mul:(a,s)=>[a[0]*s,a[1]*s,a[2]*s],
+  len:a=>Math.hypot(a[0],a[1],a[2]),
+  norm:a=>{const l=Math.hypot(a[0],a[1],a[2])||1;return [a[0]/l,a[1]/l,a[2]/l];},
+  cross:(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]],
+  lerp:(a,b,t)=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t]
+};
+
+/* 元素色取 CPK 惯例：颜色承载化学语义，不做装饰（已为白底加深） */
+const ELEMENT = {
+  C :{ color:'#6f6f6a', vdw:1.70 },
+  N :{ color:'#5b84c4', vdw:1.55 },
+  O :{ color:'#cf5538', vdw:1.52 },
+  S :{ color:'#bd9a45', vdw:1.80 },
+  P :{ color:'#b97f3e', vdw:1.80 },
+  FE:{ color:'#a25a2c', vdw:1.30 }
+};
+const CHAIN_COLOR = ['#7d94ad','#b09674','#8aa288','#a291ab','#b3a276','#85a3a3'];
+const SEL = '#17181a';
+const AMBER = '#9b917d';
+
+function mulberry(seed){
+  let a = seed >>> 0;
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function shade(hex, amt){
+  const n = parseInt(hex.slice(1),16);
+  let r=(n>>16)&255, g=(n>>8)&255, b=n&255;
+  if (amt < 0){ r*=1+amt; g*=1+amt; b*=1+amt; }
+  else { r+=(255-r)*amt; g+=(255-g)*amt; b+=(255-b)*amt; }
+  return `rgb(${r|0},${g|0},${b|0})`;
+}
+function rgba(hex, a){
+  if (hex.startsWith('rgb')) return hex.replace('rgb(', 'rgba(').replace(')', `,${a})`);
+  const n = parseInt(hex.slice(1),16);
+  return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`;
+}
+
+/* ══ 几何生成 ═════════════════════════════════════════════════════ */
+
+/* 珠蛋白折叠：8 段 α 螺旋 + 非螺旋环区 + C 端尾 + 中央血红素 */
+function buildGlobin(spec){
+  const rnd = mulberry(spec.seed || 1);
+  const atoms=[], bonds=[], ribbons=[], hemes=[], sites={};
+  const HELICES = [
+    { name:'A', from:4,   to:18  }, { name:'B', from:19, to:35 },
+    { name:'C', from:36,  to:42  }, { name:'D', from:43, to:50 },
+    { name:'E', from:52,  to:72  }, { name:'F', from:77, to:88 },
+    { name:'G', from:92,  to:100 }, { name:'H', from:103,to:136 }
+  ];
+  const SINGLE = spec.chains.length === 1;
+  const ORIGIN = SINGLE ? [[0,0,0]]
+    : [[-9.6,-3.2,1.6],[9.6,3.2,-1.6],[9.6,-3.2,-1.6],[-9.6,3.2,1.6]];
+  const RESN = ['ALA','LEU','VAL','GLY','GLU','LYS','SER','THR','ASP','PHE','ILE','ASN'];
+
+  spec.chains.forEach((chain, ci)=>{
+    const origin = ORIGIN[ci % ORIGIN.length];
+    const color = CHAIN_COLOR[ci % CHAIN_COLOR.length];
+    const isBeta = !!chain.offset;
+    const proxResi = SINGLE ? 93 : (isBeta ? 92 : 87);
+    const distResi = SINGLE ? 64 : (isBeta ? 63 : 58);
+    const proxKey  = SINGLE ? 'his93' : (isBeta ? 'his92' : 'his87');
+    const distKey  = SINGLE ? 'his64' : (isBeta ? 'his63' : 'his58');
+
+    /* 血红素口袋 */
+    const pocketDir  = V3.norm([0.30, -0.22, 0.93]);
+    const hemeCenter = V3.add(origin, V3.mul(pocketDir, 4.4));
+    const hemeNormal = V3.norm([pocketDir[0]*0.4, pocketDir[1]*0.4, pocketDir[2]]);
+    const n1 = V3.norm(V3.cross(hemeNormal, [0,1,0]));
+    const n2 = V3.cross(hemeNormal, n1);
+    const proximalPos = V3.add(hemeCenter, V3.mul(hemeNormal, -3.0));
+    const distalPos   = V3.add(hemeCenter, V3.add(V3.mul(hemeNormal, 3.2), V3.mul(n1, 1.1)));
+
+    const chains_pts = [];
+    const helixData = [];
+
+    HELICES.forEach((h, hi)=>{
+      const phi = (hi*45 + ci*11) * Math.PI/180;
+      const R = 8.5 + (hi % 2)*1.0;
+      const zOff = ((hi % 4) - 1.5)*3.0;
+      const center = V3.add(origin, [Math.cos(phi)*R, Math.sin(phi)*R, zOff]);
+      const sign = hi % 2 ? 1 : -1;
+      const tilt = ((hi % 3) - 1)*0.2;
+      const axis = V3.norm([-Math.sin(phi)*sign, Math.cos(phi)*sign, tilt]);
+      const p1 = V3.norm(V3.cross(axis, [0,0,1]));
+      const p2 = V3.cross(axis, p1);
+      const N = h.to - h.from + 1;
+      const pts=[], resis=[];
+      for (let t=0;t<N;t++){
+        const along = (t-(N-1)/2)*1.46;
+        const ang = t*1.72 + hi*0.7;
+        const wob = V3.mul(V3.add(V3.mul(p1, Math.cos(ang)), V3.mul(p2, Math.sin(ang))), 2.25);
+        const jit = V3.mul([rnd()-0.5, rnd()-0.5, rnd()-0.5], 0.4);
+        let pos = V3.add(V3.add(center, V3.mul(axis, along)), V3.add(wob, jit));
+        const resi = h.from + t;
+        let key = null, resn;
+        if (resi === proxResi){ pos = V3.lerp(pos, proximalPos, 0.93); key = proxKey; resn = 'HIS'; }
+        else if (resi === distResi){ pos = V3.lerp(pos, distalPos, 0.9); key = distKey; resn = 'HIS'; }
+        else resn = RESN[Math.floor(rnd()*RESN.length)];
+
+        const idx = atoms.length;
+        atoms.push({ i:idx, chain:chain.id, resi, resn, el:'C', pos, color, helix:h.name, sites:key?[key]:[] });
+        if (t>0) bonds.push({ a:idx-1, b:idx, kind:'backbone', color });
+        if (key) sites[key] = { key, kind:'residue', chain:chain.id, resi, resn:'HIS', pos, anchor:pos };
+        pts.push(pos); resis.push(resi);
+      }
+      helixData.push({ pts, resis });
+      ribbons.push({ chain:chain.id, helix:h.name, color, pts, resis });
+      chains_pts.push(pts);
+    });
+
+    /* 环区 */
+    for (let i=0;i<helixData.length-1;i++){
+      const a = helixData[i].pts.at(-1), b = helixData[i+1].pts[0];
+      const mid = V3.add(V3.mul(V3.add(a,b),0.5), V3.mul(V3.norm(V3.sub(b,a)), (i%2?1.6:-1.6)));
+      const pts=[];
+      for (let t=0;t<=6;t++){
+        const u=t/6, w0=(1-u)*(1-u), w1=2*(1-u)*u, w2=u*u;
+        pts.push([a[0]*w0+mid[0]*w1+b[0]*w2, a[1]*w0+mid[1]*w1+b[1]*w2, a[2]*w0+mid[2]*w1+b[2]*w2]);
+      }
+      ribbons.push({ chain:chain.id, color, pts, isLoop:true });
+      chains_pts.push(pts);
+    }
+
+    /* C 端尾（β 链含 His146 / 波尔效应残基） */
+    const tailStart = helixData.at(-1).pts.at(-1);
+    const tailDir = V3.norm(V3.sub(tailStart, origin));
+    const tailPts=[], tailResis=[];
+    for (let t=1;t<=9;t++){
+      const pos = V3.add(tailStart, V3.add(V3.mul(tailDir, t*1.5), [Math.sin(t*0.9)*1.1, Math.cos(t*1.3)*0.9, Math.sin(t*0.6)*0.8]));
+      const resi = 136+t;
+      const idx = atoms.length;
+      const isH146 = resi === 146 && isBeta;
+      atoms.push({ i:idx, chain:chain.id, resi, resn:isH146?'HIS':'GLY', el:'C', pos, color, sites:isH146?['his146']:[] });
+      if (t>1) bonds.push({ a:idx-1, b:idx, kind:'backbone', color });
+      tailPts.push(pos); tailResis.push(resi);
+      if (isH146) sites['his146'] = { key:'his146', kind:'residue', chain:chain.id, resi, resn:'HIS', pos, anchor:pos };
+    }
+    ribbons.push({ chain:chain.id, color, pts:tailPts, resis:tailResis, isTail:true });
+
+    /* 血红素（原卟啉 IX 粗模 + Fe²⁺） */
+    const hemeIdx = [];
+    const ringR = 3.4;
+    for (let k=0;k<20;k++){
+      if (k % 5 === 0) continue;      // 四个吡咯氮的位置留空
+      const ang = k/20*Math.PI*2;
+      const pos = V3.add(hemeCenter, V3.add(V3.mul(n1, Math.cos(ang)*ringR), V3.mul(n2, Math.sin(ang)*ringR)));
+      hemeIdx.push(atoms.push({ i:atoms.length, chain:chain.id, resi:0, resn:'HEM', el:'C', pos, color:'#c9c3b6', sites:['heme-'+chain.id] }) - 1);
+    }
+    for (let k=0;k<4;k++){
+      const ang = k/4*Math.PI*2 + 0.31;
+      const pos = V3.add(hemeCenter, V3.add(V3.mul(n1, Math.cos(ang)*ringR*0.5), V3.mul(n2, Math.sin(ang)*ringR*0.5)));
+      hemeIdx.push(atoms.push({ i:atoms.length, chain:chain.id, resi:0, resn:'HEM', el:'N', pos, color:ELEMENT.N.color, sites:['heme-'+chain.id] }) - 1);
+    }
+    const tailDir2 = V3.mul(V3.add(V3.mul(n1, 0.85), V3.mul(n2, 0.53)), 1);
+    [-1,1].forEach(s=>{
+      for (let t=1;t<=5;t++){
+        const pos = V3.add(hemeCenter, V3.add(V3.mul(tailDir2, s*(ringR + 1.6*t)), V3.mul(hemeNormal, -0.3*t)));
+        hemeIdx.push(atoms.push({ i:atoms.length, chain:chain.id, resi:0, resn:'HEM', el:(t%2?'C':'O'), pos,
+          color:(t%2?ELEMENT.C.color:ELEMENT.O.color), sites:['heme-'+chain.id] }) - 1);
+      }
+    });
+    const feIdx = atoms.push({ i:atoms.length, chain:chain.id, resi:0, resn:'FE', el:'FE', pos:hemeCenter, color:ELEMENT.FE.color, sites:['heme-'+chain.id] }) - 1;
+    hemeIdx.push(feIdx);
+    for (let k=0;k<hemeIdx.length-1;k++) bonds.push({ a:hemeIdx[k], b:hemeIdx[(k+1)%(hemeIdx.length-1)], kind:'heme' });
+
+    const proxIdx = atoms.findIndex(a=>a.chain===chain.id && a.resi===proxResi);
+    if (proxIdx >= 0) bonds.push({ a:proxIdx, b:feIdx, kind:'coordination' });
+
+    hemes.push({ chain:chain.id, center:hemeCenter, normal:hemeNormal, fe:feIdx, siteKey:'heme-'+chain.id });
+    sites['heme-'+chain.id] = { key:'heme-'+chain.id, kind:'heme', chain:chain.id, resi:proxResi, pos:hemeCenter, anchor:hemeCenter };
+
+    if (!SINGLE && chain.id === 'A') sites['interface'] = { key:'interface', kind:'region', chain:'A', resi:41, pos:V3.add(origin,[0,7.5,0]), anchor:V3.add(origin,[0,7.5,0]) };
+    if (!SINGLE && chain.id === 'B') sites['cavity']    = { key:'cavity',    kind:'region', chain:'B', resi:2,  pos:[0,0,0], anchor:[0,0,0] };
+  });
+
+  return { kind:'molecule', atoms, bonds, ribbons, hemes, meshes:[], sites };
+}
+
+/* 细胞器示意：双层椭球膜 + 折叠嵴 + 基质颗粒 + 环状 DNA */
+function buildOrganelle(spec){
+  const rnd = mulberry(spec.seed || 33);
+  const meshes=[], ribbons=[], atoms=[], sites={};
+  const RX=25, RY=13.5, RZ=13.8;
+
+  function ellipsoid(sx,sy,sz,alpha){
+    const verts=[], faces=[], NU=24, NV=15;
+    for (let v=0;v<=NV;v++){
+      const th = v/NV*Math.PI;
+      for (let u=0;u<NU;u++){
+        const ph = u/NU*Math.PI*2;
+        verts.push([Math.sin(th)*Math.cos(ph)*sx, Math.cos(th)*sy, Math.sin(th)*Math.sin(ph)*sz]);
+      }
+    }
+    const id=(u,v)=> v*NU + (u % NU);
+    for (let v=0;v<NV;v++) for (let u=0;u<NU;u++) faces.push([id(u,v), id(u+1,v), id(u+1,v+1), id(u,v+1)]);
+    return { verts, faces, alpha };
+  }
+  meshes.push({ ...ellipsoid(RX, RY, RZ, 0.13), color:'#7fa7c9', siteKey:'outer' });
+  meshes.push({ ...ellipsoid(RX*0.88, RY*0.84, RZ*0.84, 0.10), color:AMBER, siteKey:'inner' });
+
+  /* 嵴：内膜内折，以折带表达（示意，不含真实几何） */
+  for (let i=0;i<7;i++){
+    const x0 = (i/6 - 0.5)*2 * RX*0.62;
+    const folds = 4 + (i%2);
+    const pts=[];
+    for (let k=0;k<=folds*5;k++){
+      const u = k/(folds*5);
+      const y = (u-0.5)*RY*1.36;
+      const zig = Math.sin(u*Math.PI*folds)*RY*0.44;
+      const taper = 1 - Math.pow(Math.abs(u-0.5)*2, 2);
+      pts.push([x0 + zig*0.3, y, zig*taper*1.05]);
+    }
+    ribbons.push({ chain:'M'+i, color:AMBER, pts, isCrista:true });
+  }
+
+  /* 基质颗粒 */
+  for (let i=0;i<190;i++){
+    const th = rnd()*Math.PI, ph = rnd()*Math.PI*2, r = 0.54 + rnd()*0.36;
+    atoms.push({ i:atoms.length, chain:'M', resi:0, resn:'MTX', el:'C', color:'#5d6672', sites:['matrix'],
+      pos:[Math.sin(th)*Math.cos(ph)*RX*0.76, Math.cos(th)*RY*0.72, Math.sin(th)*Math.sin(ph)*RZ*0.76] });
+  }
+  /* 环状 DNA（拟核） */
+  const dnaC = [-RX*0.4, RY*0.1, 1.0], dnaR = 4.4;
+  for (let k=0;k<46;k++){
+    const a = k/46*Math.PI*2, wob = 0.9*Math.sin(a*3);
+    atoms.push({ i:atoms.length, chain:'D', resi:k+1, resn:'DNA', el:'P', color:'#96ab90', sites:['mtdna'],
+      pos:[dnaC[0] + Math.cos(a)*(dnaR+wob)*0.9, dnaC[1] + Math.sin(a)*(dnaR+wob)*0.5, dnaC[2] + wob*0.9] });
+  }
+
+  sites['outer']   = { key:'outer',   kind:'region', label:'外膜',       anchor:[0, RY*1.05, 0] };
+  sites['inner']   = { key:'inner',   kind:'region', label:'内膜',       anchor:[-RX*0.86, RY*0.34, 0] };
+  sites['cristae'] = { key:'cristae', kind:'region', label:'嵴',         anchor:[0, 0, RZ*0.92] };
+  sites['matrix']  = { key:'matrix',  kind:'region', label:'基质',       anchor:[RX*0.36, -RY*0.62, 0] };
+  sites['mtdna']   = { key:'mtdna',   kind:'region', label:'线粒体 DNA', anchor:dnaC };
+
+  return { kind:'organelle', atoms, bonds:[], ribbons, hemes:[], meshes, sites };
+}
+
+/* 过程示意：小型酶 + 可动底物（分步插值，不含动力学量） */
+function buildProcess(spec){
+  const atoms=[], bonds=[], ribbons=[], sites={};
+  [[-1,-1],[1,1]].forEach((s,i)=>{
+    const axis = V3.norm([s[0], 0.22*s[1], 0.26*s[1]]);
+    const p1 = V3.norm(V3.cross(axis,[0,0,1])), p2 = V3.cross(axis,p1);
+    const center = [s[0]*6.4, s[1]*2.2, 0];
+    const pts=[];
+    for (let t=0;t<17;t++){
+      const along = (t-8)*1.45, ang = t*1.72;
+      const pos = V3.add(center, V3.add(V3.mul(axis, along), V3.add(V3.mul(p1, Math.cos(ang)*2.3), V3.mul(p2, Math.sin(ang)*2.3))));
+      const idx = atoms.length;
+      atoms.push({ i:idx, chain:'E', resi:t+1, resn:'CAT', el:'C', color:CHAIN_COLOR[i], pos, sites:['site'] });
+      if (t>0) bonds.push({ a:idx-1, b:idx, kind:'backbone', color:CHAIN_COLOR[i] });
+      pts.push(pos);
+    }
+    ribbons.push({ chain:'E'+i, color:CHAIN_COLOR[i], pts });
+  });
+  atoms.push({ i:atoms.length, chain:'E', resi:64,  resn:'SER', el:'O', color:ELEMENT.O.color, pos:[-1.2,1.6,2.1], sites:['site'] });
+  atoms.push({ i:atoms.length, chain:'E', resi:102, resn:'HIS', el:'N', color:ELEMENT.N.color, pos:[ 1.2,2.1,1.2], sites:['site'] });
+
+  const subStart = atoms.length;
+  [[-0.6,5.8,3.0],[1.7,6.5,2.2],[0.2,4.5,4.3]].forEach((p,k)=>{
+    atoms.push({ i:atoms.length, chain:'S', resi:k+1, resn:'SUB', el:(k===0?'C':'O'),
+      color:(k===0?ELEMENT.C.color:ELEMENT.O.color), pos:p, sites:['substrate'],
+      mover:{ free:p,
+              bind:[p[0]*0.42-0.2, 2.7-k*0.7, 3.5-k*0.9],
+              mid :[p[0]*0.30,      2.1+k*0.4, 3.1+k*0.1],
+              out :[p[0]*0.4+2.4,   7.2+k,     1.5+k] } });
+    if (k>0) bonds.push({ a:subStart, b:atoms.length-1, kind:'substrate' });
+  });
+  const subEnd = atoms.length;
+
+  sites['site']      = { key:'site',      kind:'region', label:'活性位点', anchor:[0,1.4,2.8] };
+  sites['substrate'] = { key:'substrate', kind:'region', label:'底物',     anchor:[0.6,5.9,3.0] };
+  sites['product']   = { key:'product',   kind:'region', label:'产物',     anchor:[2.6,7.6,1.7] };
+
+  return { kind:'process', atoms, bonds, ribbons, hemes:[], meshes:[], sites, subStart, subEnd };
+}
+
+const BUILDERS = { globin:buildGlobin, organelle:buildOrganelle, process:buildProcess };
+
+/* ══ 渲染器 ═══════════════════════════════════════════════════════ */
+function BSViewer(canvas, opts){
+  const o = Object.assign({ labelHost:null, onCamera:null, onPick:null, autoRotate:true }, opts||{});
+  const ctx = canvas.getContext('2d');
+  const labelHost = o.labelHost || canvas.parentElement;
+  const st = {
+    scene:null, rep:'cartoon', highlights:new Set(),
+    yaw:-0.62, pitch:0.30, dist:150, target:[0,0,0], targetGoal:null, distGoal:null,
+    w:1, h:1, dpr:1, prims:0, picks:[], labelEls:new Map(),
+    time:0, frames:0, lastFps:0, fps:0, step:0,
+    drag:false, moved:false, last:[0,0], vel:[0,0], spin:o.autoRotate ? 0.00035 : 0
+  };
+  const sprites = new Map();
+
+  function sprite(color, rPx, glow){
+    const q = Math.max(2, Math.round(rPx));
+    const key = color + '|' + q + '|' + (glow?1:0);
+    if (sprites.has(key)) return sprites.get(key);
+    const size = Math.ceil(q*2.3);
+    const c = document.createElement('canvas'); c.width = c.height = size;
+    const g = c.getContext('2d');
+    const cx = size/2, rad = size/2;
+    const grad = g.createRadialGradient(cx-rad*0.34, cx-rad*0.38, rad*0.05, cx, cx, rad*0.94);
+    grad.addColorStop(0, glow ? '#fff1e2' : '#ffffff');
+    grad.addColorStop(0.32, color);
+    grad.addColorStop(1, shade(color, -0.66));
+    g.fillStyle = grad;
+    g.beginPath(); g.arc(cx, cx, rad*0.94, 0, Math.PI*2); g.fill();
+    if (sprites.size > 900) sprites.clear();
+    sprites.set(key, c);
+    return c;
+  }
+
+  function resize(){
+    const r = canvas.getBoundingClientRect();
+    st.dpr = Math.min(2, window.devicePixelRatio || 1);
+    st.w = Math.max(1, r.width); st.h = Math.max(1, r.height);
+    canvas.width = Math.floor(st.w*st.dpr);
+    canvas.height = Math.floor(st.h*st.dpr);
+  }
+
+  /* 世界 → 屏幕（透视投影） */
+  function project(p){
+    const cy=Math.cos(st.yaw), sy=Math.sin(st.yaw);
+    const cp=Math.cos(st.pitch), sp=Math.sin(st.pitch);
+    const x=p[0]-st.target[0], y=p[1]-st.target[1], z=p[2]-st.target[2];
+    const x1 = x*cy + z*sy, z1 = -x*sy + z*cy;
+    const y1 = y*cp - z1*sp, z2 = y*sp + z1*cp;
+    const f = st.w*1.45*st.dpr;
+    const d = Math.max(18, z2 + st.dist);
+    const k = f/d;
+    return { x: st.w*st.dpr/2 + x1*k, y: st.h*st.dpr/2 - y1*k, z:d, k, vis:d>0 };
+  }
+  const fog = (z,a)=> a*(1 - Math.min(1, Math.max(0,(z-70)/240))*0.42);
+  const scaleR = k => k*(st.dist/150);
+
+  function strokePath(pts){
+    ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
+  }
+
+  /* 主链带状 */
+  function drawRibbons(rep){
+    const list = st.scene.ribbons.map(rb=>{
+      const pts = rb.pts.map(project);
+      return { rb, pts, z: pts.reduce((s,p)=>s+p.z,0)/pts.length };
+    }).sort((a,b)=>b.z-a.z);
+    st.prims = list.length;
+    list.forEach(({rb, pts, z})=>{
+      if (pts.length < 2) return;
+      const loop = !!rb.isLoop;
+      const sel = rb.resis && [...st.highlights].some(k=>{
+        const s = st.scene.sites[k];
+        return s && s.kind === 'residue' && s.chain === rb.chain && rb.resis.includes(s.resi);
+      });
+      const w = (loop ? 1.6 : 4.8)*st.dpr*Math.max(.55, st.dist/150);
+      ctx.lineCap='round'; ctx.lineJoin='round';
+      ctx.strokeStyle = rgba('#050608', fog(z, loop?0.5:0.6));
+      ctx.lineWidth = w + (loop?1.4:3.4)*st.dpr;
+      strokePath(pts); ctx.stroke();
+      ctx.strokeStyle = rgba(sel ? SEL : rb.color, fog(z, loop?0.5:0.92));
+      ctx.lineWidth = w; strokePath(pts); ctx.stroke();
+      if (sel){
+        ctx.strokeStyle = rgba(SEL, fog(z, 0.55));
+        ctx.lineWidth = w + 4*st.dpr; strokePath(pts); ctx.stroke();
+      }
+    });
+    void rep;
+  }
+
+  /* 小半径原子（卡通模式下的 Cα 与侧链标记） */
+  function drawAtomsSmall(){
+    const list = [];
+    st.scene.atoms.forEach(a=>{
+      if (a.resn === 'HEM' || a.resn === 'FE') return;
+      const p = project(a.pos);
+      list.push({ p, a });
+      st.picks.push({ x:p.x, y:p.y, z:p.z, siteKey:(a.sites&&a.sites[0])||null, atom:a, resi:a.resi, chain:a.chain, resn:a.resn, rad:12*st.dpr });
+    });
+    list.sort((x,y)=>y.p.z-x.p.z);
+    st.prims += list.length;
+    list.forEach(({p,a})=>{
+      const sel = a.sites && a.sites.some(s=>st.highlights.has(s));
+      const r = (sel?3.2:2.0)*scaleR(p.k);
+      if (r < 0.5) return;
+      const s = sprite(sel?SEL:a.color, r*st.dpr, sel);
+      ctx.globalAlpha = fog(p.z, 1);
+      ctx.drawImage(s, p.x - s.width/2, p.y - s.height/2);
+      ctx.globalAlpha = 1;
+    });
+  }
+
+  /* 大半径原子（球棍 / 空间填充 / 表面）。
+     不变量：四种表示模式必须有可区分的渲染参数 ——
+     球棍 vdw×0.46 且画键；空间填充 vdw×0.95 不画键；表面同空间填充再加轮廓晕圈。 */
+  function drawAtomsBig(rep){
+    const stick = rep === 'ball-and-stick';
+    const surface = rep === 'surface';
+    const list = st.scene.atoms.map(a=>{
+      const p = project(a.pos);
+      const el = ELEMENT[a.el] || ELEMENT.C;
+      const sel = a.sites && a.sites.some(s=>st.highlights.has(s));
+      const base = stick ? el.vdw*0.46 : el.vdw*0.95;
+      const r = base*scaleR(p.k)*(sel?1.28:1);
+      return { p, a, el, sel, r };
+    }).sort((x,y)=>y.p.z-x.p.z);
+    st.prims += list.length;
+    /* 所有大原子模式都可拾取（半径随表示模式放大） */
+    list.forEach(({p,a,el,sel,r})=>{
+      st.picks.push({ x:p.x, y:p.y, z:p.z, siteKey:(a.sites&&a.sites[0])||null, atom:a, resi:a.resi, chain:a.chain, resn:a.resn, rad:Math.max(10*st.dpr, r*st.dpr) });
+    });
+    if (stick){
+      /* 先画键，再画球 */
+      const bonds = st.scene.bonds.map(b=>{
+        const A = st.scene.atoms[b.a], B = st.scene.atoms[b.b];
+        if (!A || !B) return null;
+        const pa = project(A.pos), pb = project(B.pos);
+        return { pa, pb, z:(pa.z+pb.z)/2, kind:b.kind, color:b.color || A.color };
+      }).filter(Boolean).sort((x,y)=>y.z-x.z);
+      bonds.forEach(({pa,pb,z,kind,color})=>{
+        ctx.beginPath(); ctx.moveTo(pa.x,pa.y); ctx.lineTo(pb.x,pb.y);
+        const w = (kind==='coordination' ? 2.2 : kind==='heme' ? 1.6 : 3.2)*st.dpr*Math.max(.5, st.dist/150);
+        ctx.lineWidth = Math.max(.7, w);
+        ctx.strokeStyle = kind === 'coordination'
+          ? rgba(SEL, fog(z, 0.85))
+          : rgba(shade(color, -0.2), fog(z, kind === 'heme' ? 0.85 : 0.7));
+        ctx.stroke();
+      });
+    }
+    list.forEach(({p,a,sel,r})=>{
+      if (r < 0.5) return;
+      if (surface){
+        ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(.5, r + 1.7*st.dpr), 0, Math.PI*2);
+        ctx.fillStyle = rgba('#0b0e12', fog(p.z, 0.9)); ctx.fill();
+        ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(.4, r), 0, Math.PI*2);
+        ctx.fillStyle = rgba(sel ? SEL : '#7f8c94', fog(p.z, 0.96)); ctx.fill();
+      } else {
+        const s = sprite(sel ? SEL : a.color, r*st.dpr, sel);
+        ctx.globalAlpha = fog(p.z, 1);
+        ctx.drawImage(s, p.x - s.width/2, p.y - s.height/2);
+        ctx.globalAlpha = 1;
+      }
+    });
+  }
+
+  function drawHemes(compact){
+    /* 高亮反馈：静态、限定在选中位点本身，不做逐帧呼吸动画，避免满屏闪动的圈 */
+    st.scene.hemes.forEach(h=>{
+      const c = project(h.center);
+      const sel = st.highlights.has(h.siteKey);
+      if (compact){
+        const r = Math.max(3, 6.0*scaleR(c.k));
+        ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, Math.PI*2);
+        ctx.strokeStyle = sel ? rgba(SEL, 0.55) : rgba(AMBER, fog(c.z, 0.6));
+        ctx.lineWidth = (sel?1.6:1.2)*st.dpr; ctx.stroke();
+      }
+      st.picks.push({ x:c.x, y:c.y, z:c.z, siteKey:h.siteKey, resi:h.siteKey, chain:h.chain, resn:'HEM', rad:15*st.dpr });
+    });
+  }
+
+  function drawMolecule(){
+    st.picks = [];
+    const compact = st.rep === 'cartoon' || st.rep === 'schematic';
+    drawRibbons(st.rep);
+    if (compact) drawAtomsSmall(); else drawAtomsBig(st.rep);
+    drawHemes(compact);
+  }
+
+  function drawOrganelle(){
+    st.picks = [];
+    const faces = [];
+    st.scene.meshes.forEach(m=>{
+      const proj = m.verts.map(project);
+      m.faces.forEach(f=>{
+        const pts = f.map(i=>proj[i]);
+        const a=pts[0], b=pts[1], c=pts[2];
+        const area = (b.x-a.x)*(c.y-a.y) - (b.y-a.y)*(c.x-a.x);
+        if (area <= 0) return;                        // 背面剔除
+        faces.push({ pts, z: pts.reduce((s,p)=>s+p.z,0)/pts.length, m });
+      });
+    });
+    faces.sort((x,y)=>y.z-x.z);
+    st.prims = faces.length;
+    faces.forEach(({pts,z,m})=>{
+      const sel = st.highlights.has(m.siteKey);
+      ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.closePath();
+      ctx.fillStyle = rgba(sel ? SEL : m.color, fog(z, sel ? 0.30 : m.alpha));
+      ctx.fill();
+      ctx.strokeStyle = rgba(sel ? SEL : m.color, fog(z, sel ? 0.62 : 0.30));
+      ctx.lineWidth = (sel ? 1.1 : 0.6)*st.dpr; ctx.stroke();
+    });
+
+    const cris = st.scene.ribbons.map(rb=>{
+      const pts = rb.pts.map(project);
+      return { rb, pts, z: pts.reduce((s,p)=>s+p.z,0)/pts.length };
+    }).sort((a,b)=>b.z-a.z);
+    cris.forEach(({rb, pts, z})=>{
+      const sel = st.highlights.has('cristae');
+      const w = (sel ? 3.6 : 2.2)*st.dpr*Math.max(.5, st.dist/150);
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.strokeStyle = rgba(sel ? SEL : rb.color, fog(z, sel ? 0.95 : 0.62));
+      ctx.lineWidth = w; strokePath(pts); ctx.stroke();
+    });
+
+    st.scene.atoms.map(a=>({ p:project(a.pos), a })).sort((x,y)=>y.p.z-x.p.z).forEach(({p,a})=>{
+      const sel = a.sites && st.highlights.has(a.sites[0]);
+      const r = (a.resn === 'DNA' ? 2.5 : 1.6)*scaleR(p.k)*(sel?1.5:1);
+      if (r < 0.35) return;
+      ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI*2);
+      ctx.fillStyle = rgba(sel ? SEL : a.color, fog(p.z, sel ? 0.98 : 0.52));
+      ctx.fill();
+    });
+    if (st.highlights.has('mtdna')){
+      const dp = st.scene.atoms.filter(a=>a.resn === 'DNA').map(a=>project(a.pos));
+      if (dp.length){
+        ctx.beginPath(); dp.forEach((p,i)=> i ? ctx.lineTo(p.x,p.y) : ctx.moveTo(p.x,p.y)); ctx.closePath();
+        ctx.strokeStyle = rgba(SEL, 0.3); ctx.lineWidth = 1.4*st.dpr; ctx.stroke();
+      }
+    }
+    Object.values(st.scene.sites).forEach(s=>{
+      const p = project(s.anchor || s.pos);
+      st.picks.push({ x:p.x, y:p.y, z:p.z, siteKey:s.key, rad: Math.max(22*st.dpr, 22*scaleR(p.k)) });
+    });
+  }
+
+  function drawProcess(){
+    st.picks = [];
+    drawRibbons('cartoon');
+    drawAtomsBig('ball-and-stick');
+    if (st.step >= 2){
+      const A = st.scene.atoms[st.scene.subStart];
+      const B = st.scene.atoms[st.scene.subEnd-1];
+      if (A && B){
+        const pa = project(A.pos), pb = project(B.pos);
+        ctx.beginPath(); ctx.moveTo(pa.x,pa.y); ctx.lineTo(pb.x,pb.y);
+        ctx.setLineDash([4*st.dpr,4*st.dpr]);
+        ctx.strokeStyle = rgba(SEL, 0.72); ctx.lineWidth = 1.6*st.dpr; ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+  }
+
+  function syncLabels(){
+    const keys = st.scene && st.scene.kind === 'organelle'
+      ? Object.keys(st.scene.sites).filter(k=>st.scene.sites[k].label) : [];
+    keys.forEach(k=>{
+      let el = st.labelEls.get(k);
+      if (!el){
+        el = document.createElement('button');
+        el.type = 'button'; el.className = 'vlabel';
+        el.addEventListener('click', e=>{ e.stopPropagation(); o.onPick && o.onPick({ siteKey:k, fromLabel:true }); });
+        labelHost.appendChild(el);
+        st.labelEls.set(k, el);
+      }
+      const s = st.scene.sites[k];
+      const p = project(s.anchor || s.pos);
+      el.textContent = s.label;
+      el.style.transform = `translate(${(p.x/st.dpr).toFixed(1)}px, ${(p.y/st.dpr).toFixed(1)}px)`;
+      el.style.opacity = p.vis ? '1' : '0';
+      el.classList.toggle('is-on', st.highlights.has(k));
+    });
+    st.labelEls.forEach((el,k)=>{
+      if (!keys.includes(k)){ el.remove(); st.labelEls.delete(k); }
+    });
+  }
+
+  function loop(ts){
+    st.time = ts;
+    st.frames++;
+    if (ts - st.lastFps > 500){ st.fps = Math.round(st.frames*1000/(ts - st.lastFps)); st.frames = 0; st.lastFps = ts; }
+    if (st.targetGoal){
+      st.target = V3.lerp(st.target, st.targetGoal, 0.12);
+      if (V3.len(V3.sub(st.target, st.targetGoal)) < 0.04) st.targetGoal = null;
+    }
+    if (st.distGoal != null){
+      st.dist += (st.distGoal - st.dist)*0.1;
+      if (Math.abs(st.dist - st.distGoal) < 0.4) st.distGoal = null;
+    }
+    if (!st.drag){
+      st.vel[0] *= 0.93; st.vel[1] *= 0.93;
+      st.yaw += st.vel[0] + st.spin;
+      st.pitch = Math.max(-1.35, Math.min(1.35, st.pitch + st.vel[1]));
+    }
+    if (st.scene && st.scene.kind === 'process'){
+      const keys = ['free','bind','mid','out'];
+      st.scene.atoms.forEach(a=>{
+        if (!a.mover) return;
+        const t = Math.max(0, Math.min(2.999, st.step));
+        const i0 = Math.floor(t), f = t - i0;
+        a.pos = V3.lerp(a.mover[keys[i0]], a.mover[keys[i0+1]], f);
+      });
+    }
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    if (st.scene){
+      if (st.scene.kind === 'organelle') drawOrganelle();
+      else if (st.scene.kind === 'process') drawProcess();
+      else drawMolecule();
+    }
+    syncLabels();
+    requestAnimationFrame(loop);
+  }
+
+  /* ── 交互 ── */
+  canvas.addEventListener('pointerdown', e=>{
+    st.drag = true; st.moved = false; st.last = [e.clientX, e.clientY];
+    try { canvas.setPointerCapture(e.pointerId); } catch(_){}
+    canvas.parentElement.classList.add('is-drag');
+  });
+  canvas.addEventListener('pointermove', e=>{
+    if (!st.drag) return;
+    const dx = e.clientX - st.last[0], dy = e.clientY - st.last[1];
+    if (Math.abs(dx) + Math.abs(dy) > 2) st.moved = true;
+    st.last = [e.clientX, e.clientY];
+    st.yaw += dx*0.0062;
+    st.pitch = Math.max(-1.35, Math.min(1.35, st.pitch + dy*0.0062));
+    st.vel = [dx*0.0008, dy*0.0008];
+    o.onCamera && o.onCamera(snapshot());
+  });
+  const endDrag = ()=>{ st.drag = false; canvas.parentElement.classList.remove('is-drag'); };
+  canvas.addEventListener('pointerup', e=>{ endDrag(); if (!st.moved) pickAt(e); });
+  canvas.addEventListener('pointercancel', endDrag);
+  canvas.addEventListener('wheel', e=>{
+    e.preventDefault();
+    st.dist = Math.max(34, Math.min(420, st.dist*(1 + Math.sign(e.deltaY)*0.09)));
+    st.distGoal = null;
+    o.onCamera && o.onCamera(snapshot());
+  }, { passive:false });
+
+  function pickAt(e){
+    const r = canvas.getBoundingClientRect();
+    const x = (e.clientX - r.left)*st.dpr, y = (e.clientY - r.top)*st.dpr;
+    let best = null, bd = 1e9;
+    st.picks.forEach(p=>{
+      const d = Math.hypot(p.x - x, p.y - y);
+      const lim = p.rad || 13*st.dpr;
+      if (d < lim && d < bd){ bd = d; best = p; }
+    });
+    if (best && o.onPick) o.onPick({ siteKey:best.siteKey, atom:best.atom, resi:best.resi, chain:best.chain, resn:best.resn });
+  }
+
+  function snapshot(){ return { yaw:st.yaw, pitch:st.pitch, dist:st.dist, target:[...st.target] }; }
+  function apply(s){
+    if (!s) return;
+    st.yaw = s.yaw; st.pitch = s.pitch; st.dist = s.dist;
+    st.targetGoal = null; st.distGoal = null;
+    st.target = [...(s.target || [0,0,0])];
+  }
+
+  resize();
+  window.addEventListener('resize', resize);
+  requestAnimationFrame(loop);
+
+  return {
+    /* 指令化接口：渲染器只读执行，不反向持有应用状态 */
+    setScene(spec){
+      st.scene = BUILDERS[spec.geom.kind](spec.geom);
+      st.step = 0; st.target = [0,0,0]; st.targetGoal = null; st.distGoal = null;
+      st.highlights = new Set();
+      st.dist = spec.geom.kind === 'organelle' ? 136 : spec.geom.kind === 'process' ? 104 : 152;
+      st.labelEls.forEach(el=>el.remove()); st.labelEls.clear();
+    },
+    setRepresentation(rep){ st.rep = rep; },
+    setHighlight(keys){ st.highlights = new Set(keys || []); },
+    focusSite(key, zoom){
+      const s = st.scene && st.scene.sites[key];
+      if (!s) return false;
+      st.targetGoal = [...(s.anchor || s.pos)];
+      st.distGoal = zoom || (st.scene.kind === 'organelle' ? 116 : 80);
+      return true;
+    },
+    resetView(){
+      st.targetGoal = [0,0,0];
+      st.distGoal = st.scene ? (st.scene.kind === 'organelle' ? 136 : st.scene.kind === 'process' ? 104 : 152) : 152;
+    },
+    setStep(n){ st.step = Math.max(0, Math.min(2.999, n)); },
+    getStep(){ return st.step; },
+    hasSite(key){ return !!(st.scene && st.scene.sites[key]); },
+    siteOf(key){ return st.scene && st.scene.sites[key]; },
+    snapshot, apply,
+    stats(){ return { fps:st.fps, prims:st.prims, zoom:(152/st.dist) }; },
+    resize
+  };
+}
+
+window.BSViewer = BSViewer;
+window.V3 = V3;
+</script>
+<script>
+/* ══════════════════════════════════════════════════════════════════
+   app.js · 应用层
+   ──────────────────────────────────────────────────────────────────
+   架构对应 ADR-0001：
+     · 状态单源：State 是唯一写入点，渲染器与覆盖层都是消费者
+     · 指令化单向流：模型/用户 → 结构化指令 → executeCommand → 状态 → 渲染
+     · 权威端：校验、编号映射、安全判定标注为后端职责（原型中为本地模拟）
+   ══════════════════════════════════════════════════════════════════ */
+
+const $  = (s, r)=> (r||document).querySelector(s);
+const $$ = (s, r)=> Array.from((r||document).querySelectorAll(s));
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ── 状态单源 ──────────────────────────────────────────────────── */
+const State = {
+  structure:null, compareStructure:null, compareOn:false, camLinked:true,
+  rep:'cartoon', scopeSelection:false,
+  selection:null, highlights:new Set(),
+  mode:'cache', processStep:0, playing:false, lastClaim:null,
+  residues:{ min:1, max:146 },
+  commands:[]
+};
+
+/* ── 渲染器实例（只读执行） ────────────────────────────────────── */
+let VM = null;            // 主视口
+let VC = null;            // 对比视口
+let cmpWrap = null;
+
+const viewport = $('#viewport');
+VM = BSViewer($('#scene'), {
+  labelHost: viewport,
+  autoRotate: true,
+  onCamera: s=>{ if (State.camLinked && VC) VC.apply(s); },
+  onPick: p=> handlePick(p)
+});
+
+/* ══ 指令执行器：所有 3D 变更的唯一入口（§6 结构化指令契约） ═════ */
+function executeCommand(cmd, opts){
+  const t0 = performance.now();
+  let ok = true, note = '';
+  switch(cmd.action){
+    case 'load_structure': {
+      const spec = STRUCTURES[cmd.target];
+      if (!spec){ ok = false; note = '未知结构标识'; break; }
+      const slot = cmd.slot === 'compare' ? 'compare' : 'main';
+      if (slot === 'main'){
+        State.structure = cmd.target;
+        VM.setScene(spec);
+        VM.setRepresentation(State.rep);
+        VM.resetView();
+        renderBadge(spec);
+        renderDeclaration(spec);
+        State.selection = null; State.highlights.clear();
+        VM.setHighlight([]);
+        renderSelection();
+        renderPresetActive();
+      } else {
+        State.compareStructure = cmd.target;
+        ensureCompare(true);
+        VC.setScene(spec);
+        VC.setRepresentation(State.rep);
+        VC.resetView();
+      }
+      break;
+    }
+    case 'set_representation': {
+      State.rep = cmd.style;
+      VM.setRepresentation(cmd.style);
+      if (VC) VC.setRepresentation(cmd.style);
+      $$('.seg__opt').forEach(b=>{
+        const on = b.dataset.rep === cmd.style;
+        b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', String(on));
+      });
+      break;
+    }
+    case 'highlight': {
+      const keys = (cmd.target||[]).filter(k=>VM.hasSite(k));
+      if (!keys.length){ ok = false; note = '目标位点在当前结构中不存在，已忽略'; break; }
+      keys.forEach(k=>State.highlights.add(k));          // 幂等：Set 去重
+      VM.setHighlight([...State.highlights]);
+      if (VC && cmd.slot === 'compare') VC.setHighlight(keys);
+      State.selection = siteToSelection(keys[keys.length-1]);
+      renderSelection();
+      break;
+    }
+    case 'clear_highlight': {
+      if (cmd.target && cmd.target.length){
+        cmd.target.forEach(k=>State.highlights.delete(k));
+      } else {
+        State.highlights.clear();
+      }
+      VM.setHighlight([...State.highlights]);
+      if (!State.highlights.size){ State.selection = null; }
+      renderSelection();
+      break;
+    }
+    case 'focus_camera': {
+      const k = cmd.target;
+      ok = VM.focusSite(k, cmd.zoom);
+      if (!ok) note = '聚焦目标不存在，已忽略';
+      if (VC && State.camLinked){ /* 联动由 onCamera 覆盖 */ }
+      break;
+    }
+    case 'compare': {
+      ensureCompare(true);
+      executeCommand({ action:'load_structure', target:cmd.targets[1], slot:'compare' });
+      break;
+    }
+    case 'open_evidence': {
+      openDrawer(cmd.claim_id);
+      break;
+    }
+    case 'play_process':
+    case 'step': {
+      setProcessStep(cmd.step != null ? cmd.step : State.processStep);
+      break;
+    }
+    default:
+      ok = false; note = '无法识别的指令，已静默忽略并记录日志';
+  }
+  const ms = Math.round(performance.now() - t0);
+  logCommand(cmd, ok, note, ms);
+  return ok;
+}
+
+function siteToSelection(key){
+  const spec = STRUCTURES[State.structure];
+  const s = spec && spec.sites[key];
+  if (!s) return null;
+  return { key, chain:s.chain || '—', resi:s.resi || null, resn:s.resn || null, label:s.label || key, kind:s.kind };
+}
+void siteToSelection;
+
+/* ══ 顶栏 / 视口信息渲染 ════════════════════════════════════════ */
+function renderBadge(spec){
+  const b = $('#structBadge');
+  $('.badge__id', b).textContent = spec.id + (spec.source === 'AlphaFold' ? ' · 预测' : '');
+  const meta = $('.badge__meta', b);
+  meta.innerHTML = '';
+  (spec.meta||[]).forEach(m=>{
+    const s = document.createElement('span');
+    s.textContent = `${m.k} ${m.v}`;
+    if (m.kind === 'pred') s.classList.add('is-pred');
+    else if (m.kind === 'warn') s.classList.add('is-warn');
+    meta.appendChild(s);
+  });
+  $('#emptyState').hidden = true;
+}
+
+function renderDeclaration(spec){
+  const bar = $('#declBar');
+  if (spec.declare){
+    bar.hidden = false;
+    $('#declText').textContent = spec.declare;
+    $('.decl__ref', bar).textContent = spec.declareRef || '';
+    viewport.classList.add('is-schematic');
+  } else {
+    bar.hidden = true;
+    viewport.classList.remove('is-schematic');
+  }
+}
+
+function renderSelection(){
+  const bar = $('#selectionBar');
+  if (!State.selection){ bar.innerHTML = '<span class="selection__none">未选择任何位点</span>'; $('#panelCtx').textContent = ctxText(); return; }
+  const sel = State.selection;
+  const spec = STRUCTURES[State.structure] || {};
+  const up = spec.uniprot || {};
+  const offset = sel.chain === 'B' || sel.chain === 'D' ? 1 : 0;
+  const upid = up['chain'+sel.chain] || Object.values(up)[0] || '—';
+  const mapTxt = sel.resi ? `${upid}:${sel.resi + offset}` : '区域';
+  bar.innerHTML = `
+    <span class="sel-chip">${sel.chain}·${sel.resn||''}${sel.resi||''}</span>
+    <span class="sel-map">PDB ${sel.chain}:${sel.resi||'—'} ↔ UniProt <b>${mapTxt}</b></span>
+    <span class="sel-map">${sel.label}</span>
+    <button class="sel-clear" id="selClear">清除高亮</button>`;
+  $('#selClear').onclick = ()=>{
+    executeCommand({ action:'clear_highlight' });
+    $('#pickCard').hidden = true;
+    setResiduePointer(null);
+  };
+  $('#panelCtx').textContent = ctxText();
+}
+function ctxText(){
+  if (!State.structure) return '上下文：—';
+  const s = State.selection;
+  return `上下文：${State.structure}${s ? ` · 链 ${s.chain} · 残基 ${s.resi ?? '—'}` : ''} · ${State.highlights.size} 个高亮`;
+}
+
+/* 左尺残基指针：讲到哪里、结构在哪里 */
+function setResiduePointer(resi){
+  const el = $('#residuePointer');
+  if (!resi){ el.classList.remove('is-live'); return; }
+  const span = State.residues.max - State.residues.min;
+  const pct = Math.max(3, Math.min(97, (resi - State.residues.min)/span*100));
+  el.style.top = pct + '%';
+  $('#residuePointerNum').textContent = resi;
+  el.classList.add('is-live');
+}
+
+/* ══ 指令日志（让不可见的契约可见） ══════════════════════════════ */
+function logCommand(cmd, ok, note, ms){
+  State.commands.push({ cmd, ok, note, ms });
+  const list = $('#cmdList');
+  const li = document.createElement('li');
+  const payload = JSON.stringify(cmd.target ?? cmd.style ?? cmd.claim_id ?? cmd.targets ?? '')
+    .replace(/["\[\]]/g,'').slice(0, 42);
+  li.innerHTML = `<span class="c-t">${String(State.commands.length).padStart(2,'0')}</span>
+    <span class="c-a">${cmd.action}</span>
+    <span>${payload}</span>
+    <span class="${ok?'c-ok':'c-skip'}">${ok ? '✓ ' + ms + 'ms' : '⊘ ' + (note||'已忽略')}</span>`;
+  list.prepend(li);
+  while (list.children.length > 40) list.lastChild.remove();
+  $('#cmdCount').textContent = State.commands.length;
+}
+
+/* ══ 结构库 / 场景 ══════════════════════════════════════════════ */
+function renderPresetList(){
+  const ul = $('#presetList');
+  ul.innerHTML = '';
+  PRESETS.forEach(p=>{
+    const li = document.createElement('li');
+    li.innerHTML = `<button data-id="${p.id}">
+      <span class="p-id">${p.short}</span>
+      <span class="p-name">${p.name}</span>
+      <span class="p-tag">${p.tag}</span>
+    </button>`;
+    $('button', li).onclick = ()=> openPreset(p);
+    ul.appendChild(li);
+  });
+}
+function renderPresetActive(){
+  $$('#presetList button').forEach(b=> b.classList.toggle('is-on', b.dataset.id === State.structure));
+}
+function openPreset(p){
+  if (p.kind === 'organelle') return runScript('s4');
+  if (p.kind === 'process')   return runScript('proc');
+  if (p.id === 'AF-P69905')   return runPredict();
+  executeCommand({ action:'load_structure', target:p.id });
+  if (p.id === '1HHO') runScript('s1');
+  else addLibraryCard(p);
+}
+function addLibraryCard(p){
+  addTurn(`
+    <div class="card">
+      <p class="card__kicker">结构已加载 · 缓存命中</p>
+      <h4 class="card__title">${p.name}（${p.id}）</h4>
+      <p>可从左侧黄金场景或直接提问继续；该结构在演示数据中未绑定讲解脚本，因此不会生成任何断言。</p>
+    </div>`);
+}
+
+/* ══ 讲解（批注本版式）+ 讲到哪里亮到哪里 ════════════════════ */
+let streaming = false;
+function narrate(script){
+  if (streaming) return Promise.resolve();
+  streaming = true;
+  const items = script.sentences || script.steps;
+  if (script.compare) executeCommand({ action:'compare', targets:[script.structure, script.compare] });
+  else if (!State.compareOn && script.structure !== State.structure)
+    executeCommand({ action:'load_structure', target:script.structure });
+
+  const head = document.createElement('section');
+  head.className = 'narr';
+  head.innerHTML = `
+    <div class="narr__head">
+      <span class="narr__title">讲解 · ${script.title||''}</span>
+      <span class="narr__mode">${modeLabel(script.modelRun.mode)}</span>
+      <span class="rule"></span>
+    </div>
+    <div class="narr__body"></div>`;
+  const body = $('.narr__body', head);
+  addTurn(head, true);
+
+  let chain = Promise.resolve();
+  items.forEach((s, i)=>{
+    chain = chain.then(()=> typeSentence(body, script, s, i));
+  });
+  return chain.then(()=>{ streaming = false; });
+}
+
+function typeSentence(body, script, s, idx){
+  return new Promise(resolve=>{
+    const wrap = document.createElement('article');
+    wrap.className = 'sent';
+    wrap.dataset.claim = s.claim;
+    wrap.innerHTML = `
+      <div class="sent__note">
+        <span class="sent__claim">${s.claim}</span>
+        <span class="sent__stamp" data-lv="${s.lv}" title="置信层级：${s.lv}"></span>
+        <span class="sent__site">${siteShort(s.sites)}</span>
+      </div>
+      <div>
+        <p class="sent__body"></p>
+        <div class="sent__acts"></div>
+      </div>`;
+    body.appendChild(wrap);
+    const p = $('.sent__body', wrap);
+    const caret = document.createElement('span'); caret.className = 'caret';
+
+    /* 讲到哪里、亮到哪里：先执行 3D 指令，再落文字 */
+    if (s.sites && s.sites.length){
+      executeCommand({ action:'clear_highlight' });
+      executeCommand({ action:'highlight', target:s.sites });
+      if (s.rep) executeCommand({ action:'set_representation', style:s.rep });
+      if (s.focus) executeCommand({ action:'focus_camera', target:s.focus });
+      const resi = STRUCTURES[State.structure]?.sites?.[s.sites[0]]?.resi;
+      setResiduePointer(resi || null);
+    }
+    if (script.steps) setProcessStep(s.n || 0);
+
+    wrap.classList.add('is-live');
+    State.lastClaim = s.claim;
+    scrollThread();
+
+    const text = s.text;
+    const instant = reduceMotion || text.length > 140;
+    let i = 0;
+    const finish = ()=>{
+      caret.remove();
+      wrap.classList.remove('is-live');
+      const acts = $('.sent__acts', wrap);
+      acts.innerHTML = `
+        <button class="sent__act sent__act--ev" data-n="${(s.ev||[]).length}" data-claim="${s.claim}">证据 ${(s.ev||[]).length}</button>
+        <button class="sent__act" data-locate="${s.claim}">在 3D 中定位</button>`;
+      $$('.sent__act', acts).forEach(b=>{
+        b.onclick = ()=> b.dataset.claim ? openDrawer(b.dataset.claim) : locateClaim(s.claim, s);
+      });
+      $('#tabEvid').textContent = `证据`;
+      setTimeout(resolve, reduceMotion ? 0 : 260);
+    };
+    if (instant){ p.textContent = text; finish(); return; }
+    p.appendChild(caret);
+    const tick = setInterval(()=>{
+      i += 2;
+      p.textContent = text.slice(0, i);
+      p.appendChild(caret);
+      if (i >= text.length){ clearInterval(tick); finish(); }
+    }, 26);
+  });
+}
+
+function locateClaim(claim, s){
+  executeCommand({ action:'clear_highlight' });
+  executeCommand({ action:'highlight', target:s.sites });
+  if (s.focus) executeCommand({ action:'focus_camera', target:s.focus });
+}
+function siteShort(keys){
+  if (!keys || !keys.length) return '';
+  const spec = STRUCTURES[State.structure];
+  const first = spec && spec.sites && spec.sites[keys[0]];
+  if (!first) return keys[0];
+  return first.resi ? `${first.chain}·${first.resi}` : (first.label || keys[0]);
+}
+function modeLabel(mode){
+  return mode === 'byok' ? 'BYOK · 用户 Key' : mode === 'local' ? '本地模型' : '预生成缓存 · 兜底';
+}
+
+/* 逐条回放（会话恢复用，不流式） */
+function renderStaticNarration(script){
+  const head = document.createElement('section');
+  head.className = 'narr';
+  head.innerHTML = `<div class="narr__head"><span class="narr__title">讲解 · ${script.title||''}</span>
+    <span class="narr__mode">${modeLabel(script.modelRun.mode)}</span><span class="rule"></span></div>
+    <div class="narr__body"></div>`;
+  const body = $('.narr__body', head);
+  (script.sentences || script.steps).forEach(s=>{
+    const wrap = document.createElement('article');
+    wrap.className = 'sent';
+    wrap.innerHTML = `<div class="sent__note"><span class="sent__claim">${s.claim}</span>
+      <span class="sent__stamp" data-lv="${s.lv}"></span><span class="sent__site">${siteShort(s.sites)}</span></div>
+      <div><p class="sent__body">${s.text}</p>
+      <div class="sent__acts"><button class="sent__act sent__act--ev" data-n="${(s.ev||[]).length}" data-claim="${s.claim}">证据 ${(s.ev||[]).length}</button></div></div>`;
+    $('.sent__act', wrap).onclick = ()=> openDrawer(s.claim);
+    body.appendChild(wrap);
+  });
+  addTurn(head, true);
+}
+
+/* ══ 对话线程 ═══════════════════════════════════════════════════ */
+function addTurn(el, isNarr){
+  const thread = $('#thread');
+  const intro = $('.thread__intro', thread);
+  if (intro) intro.remove();
+  if (typeof el === 'string'){
+    const d = document.createElement('div');
+    d.innerHTML = el;
+    el = d.firstElementChild;
+  }
+  if (!isNarr && !el.classList.contains('turn--user')) el.classList.add('is-block');
+  thread.appendChild(el);
+  scrollThread();
+  return el;
+}
+function addUser(text){
+  const el = document.createElement('div');
+  el.className = 'turn--user';
+  el.innerHTML = `<div><p class="turn__who">你</p><div class="bubble">${escapeHtml(text)}</div></div>`;
+  addTurn(el);
+}
+function scrollThread(){
+  const t = $('#thread');
+  t.scrollTop = t.scrollHeight;
+}
+function escapeHtml(s){ return s.replace(/[&<>"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
+
+/* ══ 证据抽屉 ═══════════════════════════════════════════════════ */
+function openDrawer(claimId){
+  const found = findClaim(claimId);
+  if (!found){
+    addTurn(`<div class="card"><p class="card__kicker">证据</p><h4 class="card__title">该断言暂无绑定证据</h4>
+      <p>按设计，无源断言数量必须为 0：找不到证据时不展示结论，也不编造来源。</p></div>`);
+    return;
+  }
+  const { script, s } = found;
+  State.lastClaim = claimId;
+  $('#drawerTitle').textContent = s.text.length > 46 ? s.text.slice(0,46) + '…' : s.text;
+  const bodyEl = $('#drawerBody');
+  bodyEl.innerHTML = '';
+
+  /* 断言元信息 */
+  const claimBox = document.createElement('div');
+  claimBox.className = 'ev';
+  claimBox.innerHTML = `
+    <div class="ev__top">
+      <span class="ev__type">CLAIM</span>
+      <span class="ev__lv"><i class="stamp stamp--${lvClass(s.lv)}"></i>${s.lv}</span>
+      <span class="ev__unverified">演示数据 · 未校验</span>
+    </div>
+    <p class="ev__title">${escapeHtml(s.text)}</p>
+    <div class="ev__meta">
+      <span>claim_id</span><b>${claimId}</b>
+      <span>结构引用</span><b>${STRUCTURES[script.structure]?.id || script.structure}</b>
+      <span>绑定证据</span><b>${(s.ev||[]).length} 条</b>
+    </div>`;
+  bodyEl.appendChild(claimBox);
+
+  (s.ev||[]).forEach((ev, i)=>{
+    const id = 'ev_' + claimId + '_' + i;
+    const box = document.createElement('div');
+    box.className = 'ev';
+    box.innerHTML = `
+      <div class="ev__top">
+        <span class="ev__type">${ev.type}</span>
+        <span class="ev__lv"><i class="stamp stamp--${lvClass(ev.lv)}"></i>${ev.lv} · ${ev.support.split('：')[0]}</span>
+        <span class="ev__unverified">${ev.verified ? '已校验' : '演示数据 · 未巡检'}</span>
+      </div>
+      <p class="ev__title">${escapeHtml(ev.title)}</p>
+      <p class="ev__loc">${ev.ref} · ${ev.locatorType} · ${ev.locator}</p>
+      <blockquote class="ev__quote">${escapeHtml(ev.quote)}<em>${ev.quoteKind}</em></blockquote>
+      <div class="ev__meta">
+        <span>支持关系</span><b>${ev.support}</b>
+        <span>取回时间</span><b>${ev.retrievedAt}</b>
+        <span>许可</span><b>${ev.license}</b>
+        <span>跳转代理</span><b>${ev.proxy}</b>
+      </div>
+      <div class="ev__acts">
+        <a class="ev__link" href="${ev.url}" target="_blank" rel="noopener noreferrer">打开来源 ↗</a>
+        ${s.sites && s.sites.length ? `<button class="btn btn--ghost btn--sm" data-locate="${claimId}">在 3D 中定位该断言</button>` : ''}
+      </div>`;
+    $$('[data-locate]', box).forEach(b=> b.onclick = ()=> locateClaim(claimId, s));
+    void id;
+    bodyEl.appendChild(box);
+  });
+
+  /* ModelRun：可复现记录 */
+  const run = document.createElement('div');
+  run.className = 'runbox';
+  run.innerHTML = `
+    <h4>ModelRun · 可复现记录</h4>
+    <dl>
+      <dt>model</dt><dd>${script.modelRun.model}</dd>
+      <dt>prompt_hash</dt><dd>${script.modelRun.promptHash}</dd>
+      <dt>params</dt><dd>${JSON.stringify(script.modelRun.params)}</dd>
+      <dt>generated_at</dt><dd>${script.modelRun.generatedAt}</dd>
+      <dt>review</dt><dd>${script.modelRun.reviewedBy}</dd>
+    </dl>`;
+  bodyEl.appendChild(run);
+
+  const foot = document.createElement('p');
+  foot.className = 'drawer__foot';
+  foot.innerHTML = `外链统一经后端跳转代理（${(s.ev && s.ev[0]) ? s.ev[0].proxy : '—'}），便于链接规则维护与死链巡检；PMID 类型证据待真实数据管线接入后补齐。`;
+  bodyEl.appendChild(foot);
+
+  $('#drawer').hidden = false;
+  $('#tabEvid').classList.add('is-on');
+  $('#tabNarr').classList.remove('is-on');
+}
+function lvClass(lv){
+  return lv === '实验证实' ? 'exp' : lv === '计算预测' ? 'pre' : 'con';
+}
+function findClaim(claimId){
+  for (const key of Object.keys(SCRIPTS)){
+    const sc = SCRIPTS[key];
+    const items = sc.sentences || sc.steps || [];
+    const s = items.find(x=> x.claim === claimId);
+    if (s) return { script:sc, s };
+  }
+  return null;
+}
+$('#drawerClose').onclick = ()=>{
+  $('#drawer').hidden = true;
+  $('#tabEvid').classList.remove('is-on');
+  $('#tabNarr').classList.add('is-on');
+};
+$('#tabNarr').onclick = ()=>{
+  $('#drawer').hidden = true;
+  $('#tabEvid').classList.remove('is-on');
+  $('#tabNarr').classList.add('is-on');
+};
+$('#tabEvid').onclick = ()=>{
+  if (State.lastClaim) openDrawer(State.lastClaim);
+  else openDrawer('c_1hho_01');
+};
+
+/* ══ 点击拾取 → Click-to-Ask（FR-3D-005 / FR-CHAT-003） ═════════ */
+function handlePick(p){
+  if (!p || !State.structure) return;
+  const spec = STRUCTURES[State.structure];
+  const key = p.siteKey && spec.sites[p.siteKey] ? p.siteKey : null;
+  const sel = key ? siteToSelection(key) : {
+    key:null, chain:p.chain || '—', resi:p.resi || null, resn:p.resn || '—', kind:'residue', label:'未标注位点'
+  };
+  State.selection = sel;
+  if (key){
+    executeCommand({ action:'highlight', target:[key] });
+    executeCommand({ action:'focus_camera', target:key });
+  } else {
+    executeCommand({ action:'clear_highlight' });
+    State.selection = sel;              // 未标注位点同样要反映到底栏与上下文
+    renderSelection();
+    setResiduePointer(sel.resi);
+  }
+  const card = $('#pickCard');
+  card.hidden = false;
+  $('#pickSite').textContent = `${sel.chain}·${sel.resn||''}${sel.resi||''}` + (key ? '' : ' · 未标注');
+  const up = spec.uniprot || {};
+  const upid = up['chain'+sel.chain] || Object.values(up)[0] || '—';
+  const offset = (sel.chain === 'B' || sel.chain === 'D') ? 1 : 0;
+  $('#pickMap').innerHTML = sel.resi
+    ? `PDB ${sel.chain}:${sel.resi} ↔ UniProt ${upid}:${sel.resi + offset}（编号映射在校验前完成，避免错位）`
+    : '区域选择 · 无残基编号';
+  $('#pickAsk').onclick = ()=>{
+    $('#pickCard').hidden = true;
+    State.pendingSite = key || sel.key;
+    send(`链 ${sel.chain} 的残基 ${sel.resi || ''} 突变会怎样？`, { site:key });
+  };
+  $('#pickClear').onclick = ()=>{
+    $('#pickCard').hidden = true;
+    executeCommand({ action:'clear_highlight' });
+    setResiduePointer(null);
+  };
+}
+$('#pickClose').onclick = ()=>{ $('#pickCard').hidden = true; };
+
+/* ══ 对比模式（FR-3D-007） ═════════════════════════════════════ */
+function ensureCompare(on){
+  const vp = viewport;
+  if (on && !State.compareOn){
+    State.compareOn = true;
+    vp.classList.add('is-compare');
+    $('#scene').style.right = '50%';
+    cmpWrap = document.createElement('div');
+    cmpWrap.className = 'cmp';
+    cmpWrap.innerHTML = `
+      <div class="cmp__tag" id="cmpTag">对比结构</div>`;
+    const cvs = document.createElement('canvas');
+    cvs.className = 'cmp__canvas';
+    cmpWrap.appendChild(cvs);
+    vp.appendChild(cmpWrap);
+    const div = document.createElement('div');
+    div.className = 'cmp__div';
+    vp.appendChild(div);
+    VC = BSViewer(cvs, { labels:false, autoRotate:true,
+      onCamera: s=>{ if (State.camLinked) VM.apply(s); } });
+    VM.resize();
+    $('#btnLinkCam').hidden = false;
+    $('#btnCompare').setAttribute('aria-pressed','true');
+    $('#btnCompare').classList.add('is-on');
+  } else if (!on && State.compareOn){
+    State.compareOn = false;
+    vp.classList.remove('is-compare');
+    $('#scene').style.right = '';
+    cmpWrap && cmpWrap.remove();
+    $('.cmp__div', vp) && $('.cmp__div', vp).remove();
+    VC = null; cmpWrap = null;
+    VM.resize();
+    $('#btnLinkCam').hidden = true;
+    $('#btnCompare').setAttribute('aria-pressed','false');
+    $('#btnCompare').classList.remove('is-on');
+    State.compareStructure = null;
+  }
+  if (cmpWrap && State.compareStructure) $('#cmpTag').textContent = State.compareStructure;
+}
+$('#btnCompare').onclick = ()=> ensureCompare(!State.compareOn);
+$('#btnLinkCam').onclick = e=>{
+  State.camLinked = !State.camLinked;
+  e.currentTarget.setAttribute('aria-pressed', String(State.camLinked));
+  e.currentTarget.classList.toggle('is-on', State.camLinked);
+  if (State.camLinked && VC) VC.apply(VM.snapshot());
+};
+$('#btnReset').onclick = ()=>{ executeCommand({ action:'focus_camera' , target:'' }); VM.resetView(); if (VC) VC.resetView(); };
+$('#btnFocus').onclick = ()=>{
+  if (!State.selection){ addTurn(`<div class="card"><p class="card__kicker">聚焦</p><p>先在 3D 中点选一个位点，或在左侧运行 S2。</p></div>`); return; }
+  if (State.selection.key) VM.focusSite(State.selection.key);
+};
+
+/* ══ 表示模式 / 作用范围 ═══════════════════════════════════════ */
+$$('.seg__opt').forEach(b=>{
+  b.onclick = ()=> executeCommand({ action:'set_representation', style:b.dataset.rep });
+});
+$('#scopeSel').onchange = e=>{
+  State.scopeSelection = e.target.checked;
+  addTurn(`<div class="card"><p class="card__kicker">表示作用范围</p>
+    <p>${e.target.checked
+      ? '表示切换现在只作用于当前选择范围；未选中时回退为全局。'
+      : '表示切换作用于整个结构。'}</p></div>`);
+};
+
+/* ══ 过程分步控制（FR-PROC-001/002/003） ═══════════════════════ */
+let procBar = null;
+function ensureProcessBar(show, script){
+  if (show && !procBar){
+    procBar = document.createElement('div');
+    procBar.className = 'procbar';
+    procBar.innerHTML = `
+      <button class="tool" id="procPlay" aria-pressed="false">播放</button>
+      <button class="tool" id="procPrev">上一步</button>
+      <button class="tool" id="procNext">下一步</button>
+      <div class="procbar__steps" id="procSteps"></div>`;
+    viewport.appendChild(procBar);
+    const steps = (script || SCRIPTS.proc).steps;
+    $('#procSteps').innerHTML = steps.map(s=>`<button class="procstep" data-n="${s.n}"><b>${s.n+1}</b>${s.name}</button>`).join('');
+    $$('.procstep').forEach(b=> b.onclick = ()=>{
+      const n = Number(b.dataset.n);
+      setProcessStep(n);
+      const s = steps.find(x=>x.n === n);
+      renderStepNote(s);
+    });
+    $('#procNext').onclick = ()=>{ const n = Math.min(3, State.processStep+1); setProcessStep(n); renderStepNote(steps.find(x=>x.n===n)); };
+    $('#procPrev').onclick = ()=>{ const n = Math.max(0, State.processStep-1); setProcessStep(n); renderStepNote(steps.find(x=>x.n===n)); };
+    $('#procPlay').onclick = e=>{
+      State.playing = !State.playing;
+      e.currentTarget.classList.toggle('is-on', State.playing);
+      e.currentTarget.textContent = State.playing ? '暂停' : '播放';
+      if (State.playing) playLoop(steps);
+    };
+  } else if (!show && procBar){
+    State.playing = false;
+    procBar.remove(); procBar = null;
+  }
+}
+function playLoop(steps){
+  if (!State.playing) return;
+  const n = (State.processStep + 1) % 4;
+  setProcessStep(n);
+  renderStepNote(steps.find(x=>x.n === n));
+  setTimeout(()=> playLoop(steps), 2100);
+}
+function setProcessStep(n){
+  State.processStep = n;
+  executeCommand({ action:'step', step:n });
+  $$('.procstep').forEach(b=> b.classList.toggle('is-on', Number(b.dataset.n) === n));
+}
+function renderStepNote(s){
+  if (!s) return;
+  addTurn(`<div class="card"><p class="card__kicker">步骤 ${s.n+1} · ${s.name} · ${s.lv}</p>
+    <p style="font-family:var(--serif);font-size:13.5px;line-height:1.8;color:var(--ink-2)">${s.text}</p>
+    <div class="ev__acts"><button class="btn btn--ghost btn--sm" data-claim="${s.claim}">证据 ${(s.ev||[]).length}</button></div></div>`,
+    true);
+  $$('#thread [data-claim]').forEach(b=> b.onclick = ()=> openDrawer(b.dataset.claim));
+}
+
+/* ══ 输入路由（真实环境：后端意图解析 + 校验） ════════════════ */
+function send(text, ctx){
+  if (!text.trim()) return;
+  addUser(text);
+  const t = text.trim();
+  const hit = INTENTS.find(i=> i.re.test(t));
+  const id = hit ? hit.id : 'fallback';
+  if (id === 'dualuse') return denyCard();
+  if (id === 'unsupported') return unsupportedCard(t);
+  if (State.playing){ State.playing = false; $('#procPlay') && $('#procPlay').classList.remove('is-on'); }
+
+  switch(id){
+    case 'load_1hho': {
+      const explicit = /1hho/i.test(t);
+      if (!explicit && State.structure !== '1HHO') return candidateCard('hemoglobin');
+      if (!explicit && State.structure === '1HHO') return narrate(SCRIPTS.s1);
+      executeCommand({ action:'load_structure', target:'1HHO' });
+      return narrate(SCRIPTS.s1);
+    }
+    case 'mutation': {
+      if (!State.structure || !STRUCTURES[State.structure].sites['his87'])
+        return addTurn(`<div class="card"><p class="card__kicker">需要结构上下文</p><p>先加载 1HHO，再点击残基提问。</p></div>`);
+      const site = (ctx && ctx.site) || (State.selection && State.selection.key);
+      if (!site){
+        executeCommand({ action:'highlight', target:['his87'] });
+        executeCommand({ action:'focus_camera', target:'his87' });
+        addTurn(`<div class="card"><p class="card__kicker">位点上下文</p><p>尚未选中残基，已默认定位到链 A 的 His87（F8）作为本次追问的上下文。</p></div>`);
+      }
+      return narrate(SCRIPTS.s2);
+    }
+    case 'compare': return narrate(SCRIPTS.s3);
+    case 'organelle': return narrate(SCRIPTS.s4);
+    case 'process': return narrate(SCRIPTS.proc);
+    case 'predict': return runPredict();
+    case 'evidence': return openDrawer(State.lastClaim || 'c_1hho_01');
+    case 'save': return saveSession();
+    case 'restore': return restorePrompt();
+    case 'focus': {
+      const m = t.match(/(\d{1,3})/);
+      if (!m) return addTurn(`<div class="card"><p class="card__kicker">聚焦</p><p>请给出残基号，例如「His87」或「残基 92」。</p></div>`);
+      const resi = Number(m[1]);
+      const key = Object.keys(STRUCTURES[State.structure]?.sites || {}).find(k=>{
+        const s = STRUCTURES[State.structure].sites[k];
+        return s.kind === 'residue' && s.resi === resi;
+      });
+      if (!key) return addTurn(`<div class="card">
+        <p class="card__kicker">该位点暂无绑定证据</p>
+        <h4 class="card__title">残基 ${resi} 无法讲解</h4>
+        <p>演示数据只为少数位点绑定了证据（His87 / His58 / His92 / His63 / His146）。按「无源断言 = 0」原则，这里不生成任何结论。</p></div>`);
+      return handlePick({ siteKey:key });
+    }
+    default: return clarifyCard(t);
+  }
+}
+
+function runPredict(){
+  executeCommand({ action:'load_structure', target:'AF-P69905' });
+  const spec = STRUCTURES['AF-P69905'];
+  addTurn(`<div class="card">
+    <p class="card__kicker">来源标注 · 计算预测</p>
+    <h4 class="card__title">这是 AlphaFold 预测结构，不是实验测定结构</h4>
+    <p>整体 pLDDT 96.4；配体与金属离子通常不建模，因此这里不展示血红素，也不对结合性质下结论。</p>
+  </div>`, true);
+  const sentences = [
+    { claim:'c_af_01', lv:'计算预测', text:'预测模型给出 α 链的珠蛋白折叠：八段螺旋的排布与实验结构高度一致，核心区置信度很高。',
+      sites:['his87'], focus:'his87', rep:'cartoon', ev:[SRC.aphafold] },
+    { claim:'c_af_02', lv:'计算预测', text:'但预测模型没有血红素：没有配体，就无法从这张模型直接判断铁的结合几何——这正是"预测结构须标注不确定性"的典型场景。',
+      sites:['his87'], focus:'his87', ev:[SRC.aphafold] },
+    { claim:'c_af_03', lv:'计算预测', text:'看哪里：注意 His87 侧链的朝向；在实验结构里它是被铁"钉住"的，这里只能算一个概率性摆位。',
+      sites:['his87'], focus:'his87', ev:[SRC.aphafold] }
+  ];
+  return narrate({ id:'af', structure:'AF-P69905', modelRun:{ model:'预生成缓存 · BS-EDU-v1（预测结构讲解）', mode:'cache',
+    promptHash:'sha256:0af31c7e…22d9', params:{ temperature:0.2, top_p:0.9, max_tokens:480 },
+    generatedAt:'2026-09-28 04:30 UTC', reviewedBy:'科学复核 · 已通过（演示）' }, title:'AlphaFold 预测结构', sentences });
+  void spec;
+}
+
+function candidateCard(kind){
+  const list = CANDIDATES[kind] || [];
+  const el = addTurn(`<div class="card">
+    <p class="card__kicker">检索命中多个候选 · 不静默猜测</p>
+    <h4 class="card__title">「${kind === 'hemoglobin' ? '血红蛋白' : '肌红蛋白'}」对应多个结构</h4>
+    <p>请选择要加载的结构（真实实现中候选来自多标识符解析服务）。</p>
+    <div class="cands">${list.map(c=>`<button data-id="${c.id}">
+      <span class="c-id">${c.id}</span><span class="c-name">${c.name}</span><span class="c-src">${c.src}</span></button>`).join('')}</div>
+  </div>`, true);
+  $$('.cands button', el).forEach(b=> b.onclick = ()=>{
+    const id = b.dataset.id;
+    State.structure = null;
+    executeCommand({ action:'load_structure', target:id });
+    if (id === '1HHO') narrate(SCRIPTS.s1);
+    else if (id === 'AF-P69905') runPredict();
+    else addLibraryCard(PRESETS.find(p=>p.id === id));
+  });
+}
+
+function denyCard(){
+  addTurn(`<div class="card card--deny">
+    <p class="card__kicker">安全策略命中 · 后端判定</p>
+    <h4 class="card__title">${SAFETY.denyTitle}</h4>
+    <p>${SAFETY.denyBody}</p>
+    <div class="trace">${SAFETY.trace.map(x=>`· ${x}`).join('<br>')}</div>
+  </div>`, true);
+  logCommand({ action:'safety.refuse' }, false, 'REFUSE · 已留痕', 1);
+}
+
+function unsupportedCard(t){
+  addTurn(`<div class="card">
+    <p class="card__kicker">拒答 · 超出证据范围</p>
+    <h4 class="card__title">暂无可靠来源支持</h4>
+    <p>「${escapeHtml(t.slice(0,28))}」涉及临床判断或个人化结论，教学证据库不覆盖此类问题。按 FR-AI-005，这里明确说明"没有可靠来源"，而不是给一个听起来合理的答案。</p>
+    <div class="trace">· 检索范围：结构 · 功能注释 · 教科书级共识<br>· 命中 0 条可绑定证据<br>· 无源断言计数保持 0</div>
+  </div>`, true);
+}
+
+function clarifyCard(t){
+  addTurn(`<div class="card">
+    <p class="card__kicker">未解析为可执行意图</p>
+    <h4 class="card__title">还不能把这句话变成 3D 动作</h4>
+    <p>已记录原文，未执行任何渲染指令（避免"看起来执行了"的假反馈）。可试试：</p>
+    <div class="cands">
+      <button data-say="1HHO 怎么运氧？"><span class="c-id">1HHO</span><span class="c-name">怎么运氧？</span><span class="c-src">load → highlight → narrate</span></button>
+      <button data-say="线粒体长什么样？"><span class="c-id">线粒体</span><span class="c-name">细胞器示意</span><span class="c-src">示意声明</span></button>
+      <button data-say="和肌红蛋白比呢？"><span class="c-id">对比</span><span class="c-name">1HHO vs 1MBO</span><span class="c-src">compare</span></button>
+    </div></div>`, true);
+  void t;
+  $$('#thread .cands button').forEach(b=> b.onclick = ()=> send(b.dataset.say));
+}
+
+/* ══ 会话：保存 / 恢复 / 导出（FR-SES-001~003） ════════════════ */
+const LS_KEY = 'biosynapse.sessions.v1';
+function loadSessions(){
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]'); } catch(_) { return []; }
+}
+function persist(list){
+  try { localStorage.setItem(LS_KEY, JSON.stringify(list)); } catch(_){}
+  renderSessions();
+}
+function saveSession(){
+  const list = loadSessions();
+  const spec = STRUCTURES[State.structure] || {};
+  const rec = {
+    id:'s_' + Date.now(),
+    name:`${State.structure || '未加载'} · ${new Date().toLocaleTimeString('zh-CN',{hour12:false})}`,
+    at:new Date().toISOString(),
+    structure:State.structure, compare:State.compareStructure, rep:State.rep,
+    highlights:[...State.highlights], selection:State.selection,
+    camera:VM.snapshot(), lastClaim:State.lastClaim,
+    audit:{ sources:spec.source || '—', mode:State.mode, proto:true }
+  };
+  list.unshift(rec);
+  persist(list.slice(0, 12));
+  addTurn(`<div class="card"><p class="card__kicker">会话已保存</p>
+    <h4 class="card__title">${rec.name}</h4>
+    <div class="trace">· 结构 ${rec.structure || '—'} · 视角 ${rec.camera.yaw.toFixed(2)}/${rec.camera.pitch.toFixed(2)} · 高亮 ${rec.highlights.length} 项<br>
+    · 导出内容保留来源 URL、retrieved_at、模型版本等审计字段（FR-SES-003）</div></div>`, true);
+}
+function restorePrompt(){
+  const list = loadSessions();
+  if (!list.length) return addTurn(`<div class="card"><p class="card__kicker">恢复</p><p>还没有保存过的会话。</p></div>`);
+  const el = addTurn(`<div class="card"><p class="card__kicker">恢复会话</p>
+    <h4 class="card__title">选择要恢复的会话</h4>
+    <div class="cands">${list.map(s=>`<button data-id="${s.id}">
+      <span class="c-id">${s.structure || '—'}</span><span class="c-name">${s.name}</span>
+      <span class="c-src">${new Date(s.at).toLocaleString('zh-CN',{hour12:false})}</span></button>`).join('')}</div></div>`, true);
+  $$('.cands button', el).forEach(b=> b.onclick = ()=> restoreSession(b.dataset.id));
+}
+function restoreSession(id){
+  const rec = loadSessions().find(s=>s.id === id);
+  if (!rec) return;
+  $('#thread').innerHTML = '';
+  if (rec.compare) ensureCompare(true);
+  executeCommand({ action:'load_structure', target:rec.structure });
+  if (rec.compare) executeCommand({ action:'load_structure', target:rec.compare, slot:'compare' });
+  executeCommand({ action:'set_representation', style:rec.rep });
+  (rec.highlights||[]).forEach(k=> executeCommand({ action:'highlight', target:[k] }));
+  VM.apply(rec.camera);
+  if (VC) VC.apply(rec.camera);
+  const script = Object.values(SCRIPTS).find(s=> s.structure === rec.structure);
+  if (script) renderStaticNarration(script);
+  addTurn(`<div class="card"><p class="card__kicker">会话已恢复</p>
+    <h4 class="card__title">${rec.name}</h4>
+    <p>视角、高亮、讲解与证据状态按保存时的记录重建；结构来源可用时重新拉取，不可用时回落缓存并显式提示。</p></div>`, true);
+}
+function renderSessions(){
+  const list = loadSessions();
+  const ul = $('#sessionList');
+  $('#sessionCount').textContent = list.length ? `${list.length} 条` : '0 条';
+  $('#btnExport').disabled = !list.length;
+  if (!list.length){ ul.innerHTML = '<li class="sessions__empty">尚无保存的会话</li>'; return; }
+  ul.innerHTML = '';
+  list.forEach(s=>{
+    const li = document.createElement('li');
+    li.innerHTML = `<button><span class="s-name">${s.structure || '—'} · ${new Date(s.at).toLocaleString('zh-CN',{hour12:false})}</span>
+      <span class="s-meta">${s.highlights.length} 高亮 · ${s.rep}</span></button>`;
+    $('button', li).onclick = ()=> restoreSession(s.id);
+    ul.appendChild(li);
+  });
+}
+$('#btnExport').onclick = ()=>{
+  const list = loadSessions();
+  const payload = {
+    app:'BioSynapse', version:'0.1.0-alpha', prototype:true,
+    exportedAt:new Date().toISOString(),
+    note:'导出包含结构标识、视角参数、断言与证据清单及其审计字段；演示数据未经校验。',
+    sessions:list
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `biosynapse-sessions-${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+$('#btnSave').onclick = ()=> saveSession();
+
+/* ══ 模式切换（NFR-7 能力契约） ════════════════════════════════ */
+$$('.modeswitch__opt').forEach(b=>{
+  b.onclick = ()=>{
+    State.mode = b.dataset.mode;
+    $$('.modeswitch__opt').forEach(x=>{
+      const on = x === b;
+      x.classList.toggle('is-on', on);
+      x.setAttribute('aria-checked', String(on));
+    });
+    const copy = {
+      cache:'已切到预生成缓存兜底：零配置可用，首 token 目标 < 2s；断网或未配置 Key 时自动落到这条路径。',
+      byok:'已切到 BYOK：需要你的 API Key。原型不发起真实调用；能力契约显示为流式 + 函数调用 + 结构化输出。',
+      local:'已切到本地模型：若模型不支持结构化输出，将按能力契约降级为「文本 + 代码块提取」，并按最大上下文裁剪历史。'
+    }[State.mode];
+    addTurn(`<div class="card"><p class="card__kicker">讲解来源 · 能力契约</p><p>${copy}</p>
+      <div class="trace">can_stream · can_call_functions · max_context · can_structured_output · can_control_3d</div></div>`, true);
+  };
+});
+
+/* ══ 指令日志开关 / 快捷输入 ═══════════════════════════════════ */
+$('#logToggle').onclick = e=>{
+  const open = $('#cmdLog').hidden;
+  $('#cmdLog').hidden = !open;
+  e.currentTarget.setAttribute('aria-expanded', String(open));
+};
+$$('#quickChips button').forEach(b=> b.onclick = ()=> send(b.dataset.say));
+document.addEventListener('click', e=>{
+  const b = e.target.closest('[data-say]');
+  if (b && !b.closest('#quickChips')) send(b.dataset.say);
+});
+
+/* 输入框 */
+const input = $('#input');
+function submitInput(){
+  const t = input.value.trim();
+  if (!t) return;
+  input.value = '';
+  send(t);
+}
+$('#btnSend').onclick = submitInput;
+input.addEventListener('keydown', e=>{
+  if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); submitInput(); }
+});
+document.addEventListener('keydown', e=>{
+  if (e.key === 'Escape'){
+    $('#drawer').hidden = true; $('#pickCard').hidden = true;
+    $('#tabEvid').classList.remove('is-on');
+    $('#tabNarr').classList.add('is-on');
+  }
+});
+
+/* 结构库检索 */
+$('#libSearch').addEventListener('input', e=>{
+  const q = e.target.value.trim().toLowerCase();
+  $$('#presetList li').forEach(li=>{
+    const b = $('button', li);
+    li.classList.toggle('hide', !!q && !b.textContent.toLowerCase().includes(q));
+  });
+});
+
+/* 场景入口 */
+$$('#sceneList button, .vp__empty [data-scene]').forEach(b=>{
+  b.onclick = ()=>{
+    const s = b.dataset.scene;
+    if (s === 's1'){ executeCommand({ action:'load_structure', target:'1HHO' }); narrate(SCRIPTS.s1); }
+    if (s === 's2'){
+      executeCommand({ action:'load_structure', target:'1HHO' });
+      handlePick({ siteKey:'his87' });
+      narrate(SCRIPTS.s2);
+    }
+    if (s === 's3') narrate(SCRIPTS.s3);
+    if (s === 's4') narrate(SCRIPTS.s4);
+  };
+});
+
+/* 过程入口 */
+$$('#presetList button').forEach(()=>{});
+
+/* ══ HUD 轮询 ═════════════════════════════════════════════════ */
+setInterval(()=>{
+  const s = VM.stats();
+  $('#hudFps').textContent = s.fps || '–';
+  $('#hudPrim').textContent = s.prims || '–';
+  $('#hudZoom').textContent = s.zoom.toFixed ? s.zoom.toFixed(2) + '×' : s.zoom + '×';
+}, 500);
+
+/* ══ 启动 ═════════════════════════════════════════════════════ */
+renderPresetList();
+renderSessions();
+renderSelection();
+$('#composerHint').textContent = 'Enter 发送 · Shift+Enter 换行 · 演示数据不发起真实模型调用';
+</script>
+</body>
+</html>
