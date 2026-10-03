@@ -211,6 +211,7 @@ input,textarea{font:inherit;color:inherit}
   position:relative;flex:1 1 auto;min-height:0;overflow:hidden;
   background:var(--paper);
   cursor:grab;
+  isolation:isolate;         /* 自成层叠上下文：对比画布可置于最底层，覆盖控件在其上 */
 }
 .viewport.is-drag{cursor:grabbing}
 .viewport canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
@@ -219,14 +220,27 @@ input,textarea{font:inherit;color:inherit}
 /* 对比模式：主画布收窄至左半，对比画布占右半，中线为墨色分隔条
    （canvas 为替换元素，width 必须显式给 50%，auto 会退回固有宽度导致 right 被忽略） */
 .viewport.is-compare #scene{width:50%;right:50%}
-.cmp{position:absolute;left:50%;top:0;right:0;bottom:0;overflow:hidden;background:var(--paper)}
+.cmp{position:absolute;left:50%;top:0;right:0;bottom:0;overflow:hidden;background:var(--paper);z-index:-1}
 .cmp__canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+/* 对比面板头部：结构标识 + 退出按钮（挂在视口层，压在画布之上） */
+.cmp__head{
+  position:absolute;left:50%;top:24px;margin-left:12px;z-index:5;
+  display:flex;align-items:center;gap:6px;
+}
 .cmp__tag{
-  position:absolute;left:12px;top:24px;z-index:4;pointer-events:none;
+  pointer-events:none;
   font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--ink-2);
   background:rgba(255,255,255,.9);border:1px solid var(--hairline);border-radius:var(--r-md);
   padding:3px 7px;
 }
+.cmp__close{
+  display:inline-flex;align-items:center;gap:4px;
+  font-size:11px;color:var(--ink-2);
+  background:rgba(255,255,255,.92);border:1px solid var(--hairline-hard);border-radius:var(--r-md);
+  padding:3px 8px;transition:color var(--t-fast),border-color var(--t-fast),background var(--t-fast);
+}
+.cmp__close:hover{color:var(--ink);border-color:var(--ink);background:var(--accent-wash)}
+.cmp__close:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
 .cmp__div{
   position:absolute;left:50%;top:0;bottom:0;width:1px;z-index:3;pointer-events:none;
   background:linear-gradient(180deg,transparent,var(--ink-3) 18%,var(--ink-3) 82%,transparent);
@@ -280,6 +294,7 @@ input,textarea{font:inherit;color:inherit}
   background:rgba(255,255,255,.92);
   border:1px solid var(--hairline);border-left:2px solid var(--ink);
   border-radius:0 var(--r-md) var(--r-md) 0;padding:9px 12px 10px;
+  pointer-events:none;        /* 纯信息面板，不拦截画布拖拽 */
 }
 .badge__id{font-family:var(--mono);font-size:15px;font-weight:500;letter-spacing:.04em}
 .badge__meta{margin-top:5px;display:flex;flex-wrap:wrap;gap:5px}
@@ -307,6 +322,7 @@ input,textarea{font:inherit;color:inherit}
   position:absolute;left:0;right:0;top:0;height:26px;display:flex;align-items:center;gap:10px;
   background:rgba(255,255,255,.96);border-bottom:1px solid var(--ink);
   padding-left:0;z-index:4;
+  pointer-events:none;        /* 声明条横跨视口，不拦截两侧画布拖拽 */
 }
 .decl__stripes{
   width:74px;height:100%;flex:0 0 auto;
@@ -319,6 +335,7 @@ input,textarea{font:inherit;color:inherit}
 .vp__hud{
   position:absolute;right:24px;bottom:18px;display:flex;gap:14px;
   font-family:var(--mono);font-size:10px;color:var(--ink-4);
+  pointer-events:none;        /* 读数不拦截画布拖拽 */
 }
 .vp__hud b{color:var(--ink-3);font-weight:500}
 

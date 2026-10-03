@@ -28,7 +28,8 @@ const ELEMENT = {
   FE:{ color:'#a25a2c', vdw:1.30 }
 };
 const CHAIN_COLOR = ['#7d94ad','#b09674','#8aa288','#a291ab','#b3a276','#85a3a3'];
-const SEL = '#17181a';
+/* 高亮色：白底上墨黑对比不足，改为品红；各处一律配低不透明度，避免遮住结构本身 */
+const SEL = '#c0399f';
 const AMBER = '#9b917d';
 
 function mulberry(seed){
@@ -319,7 +320,7 @@ function BSViewer(canvas, opts){
     const g = c.getContext('2d');
     const cx = size/2, rad = size/2;
     const grad = g.createRadialGradient(cx-rad*0.34, cx-rad*0.38, rad*0.05, cx, cx, rad*0.94);
-    grad.addColorStop(0, glow ? '#fff1e2' : '#ffffff');
+    grad.addColorStop(0, '#ffffff');
     grad.addColorStop(0.32, color);
     grad.addColorStop(1, shade(color, -0.66));
     g.fillStyle = grad;
@@ -376,10 +377,10 @@ function BSViewer(canvas, opts){
       ctx.strokeStyle = rgba('#050608', fog(z, loop?0.5:0.6));
       ctx.lineWidth = w + (loop?1.4:3.4)*st.dpr;
       strokePath(pts); ctx.stroke();
-      ctx.strokeStyle = rgba(sel ? SEL : rb.color, fog(z, loop?0.5:0.92));
+      ctx.strokeStyle = rgba(sel ? SEL : rb.color, fog(z, loop?0.5:(sel?0.72:0.92)));
       ctx.lineWidth = w; strokePath(pts); ctx.stroke();
       if (sel){
-        ctx.strokeStyle = rgba(SEL, fog(z, 0.55));
+        ctx.strokeStyle = rgba(SEL, fog(z, 0.28));
         ctx.lineWidth = w + 4*st.dpr; strokePath(pts); ctx.stroke();
       }
     });
@@ -402,7 +403,7 @@ function BSViewer(canvas, opts){
       const r = (sel?3.2:2.0)*scaleR(p.k);
       if (r < 0.5) return;
       const s = sprite(sel?SEL:a.color, r*st.dpr, sel);
-      ctx.globalAlpha = fog(p.z, 1);
+      ctx.globalAlpha = fog(p.z, sel ? 0.82 : 1);
       ctx.drawImage(s, p.x - s.width/2, p.y - s.height/2);
       ctx.globalAlpha = 1;
     });
@@ -440,7 +441,7 @@ function BSViewer(canvas, opts){
         const w = (kind==='coordination' ? 2.2 : kind==='heme' ? 1.6 : 3.2)*st.dpr*Math.max(.5, st.dist/150);
         ctx.lineWidth = Math.max(.7, w);
         ctx.strokeStyle = kind === 'coordination'
-          ? rgba(SEL, fog(z, 0.85))
+          ? rgba(SEL, fog(z, 0.6))
           : rgba(shade(color, -0.2), fog(z, kind === 'heme' ? 0.85 : 0.7));
         ctx.stroke();
       });
@@ -451,10 +452,10 @@ function BSViewer(canvas, opts){
         ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(.5, r + 1.7*st.dpr), 0, Math.PI*2);
         ctx.fillStyle = rgba('#0b0e12', fog(p.z, 0.9)); ctx.fill();
         ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(.4, r), 0, Math.PI*2);
-        ctx.fillStyle = rgba(sel ? SEL : '#7f8c94', fog(p.z, 0.96)); ctx.fill();
+        ctx.fillStyle = rgba(sel ? SEL : '#7f8c94', fog(p.z, sel ? 0.7 : 0.96)); ctx.fill();
       } else {
         const s = sprite(sel ? SEL : a.color, r*st.dpr, sel);
-        ctx.globalAlpha = fog(p.z, 1);
+        ctx.globalAlpha = fog(p.z, sel ? 0.82 : 1);
         ctx.drawImage(s, p.x - s.width/2, p.y - s.height/2);
         ctx.globalAlpha = 1;
       }
@@ -469,7 +470,7 @@ function BSViewer(canvas, opts){
       if (compact){
         const r = Math.max(3, 6.0*scaleR(c.k));
         ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, Math.PI*2);
-        ctx.strokeStyle = sel ? rgba(SEL, 0.55) : rgba(AMBER, fog(c.z, 0.6));
+        ctx.strokeStyle = sel ? rgba(SEL, 0.45) : rgba(AMBER, fog(c.z, 0.6));
         ctx.lineWidth = (sel?1.6:1.2)*st.dpr; ctx.stroke();
       }
       st.picks.push({ x:c.x, y:c.y, z:c.z, siteKey:h.siteKey, resi:h.siteKey, chain:h.chain, resn:'HEM', rad:15*st.dpr });
@@ -504,9 +505,9 @@ function BSViewer(canvas, opts){
       ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
       for (let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
       ctx.closePath();
-      ctx.fillStyle = rgba(sel ? SEL : m.color, fog(z, sel ? 0.30 : m.alpha));
+      ctx.fillStyle = rgba(sel ? SEL : m.color, fog(z, sel ? 0.20 : m.alpha));
       ctx.fill();
-      ctx.strokeStyle = rgba(sel ? SEL : m.color, fog(z, sel ? 0.62 : 0.30));
+      ctx.strokeStyle = rgba(sel ? SEL : m.color, fog(z, sel ? 0.48 : 0.30));
       ctx.lineWidth = (sel ? 1.1 : 0.6)*st.dpr; ctx.stroke();
     });
 
@@ -518,7 +519,7 @@ function BSViewer(canvas, opts){
       const sel = st.highlights.has('cristae');
       const w = (sel ? 3.6 : 2.2)*st.dpr*Math.max(.5, st.dist/150);
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      ctx.strokeStyle = rgba(sel ? SEL : rb.color, fog(z, sel ? 0.95 : 0.62));
+      ctx.strokeStyle = rgba(sel ? SEL : rb.color, fog(z, sel ? 0.72 : 0.62));
       ctx.lineWidth = w; strokePath(pts); ctx.stroke();
     });
 
@@ -527,7 +528,7 @@ function BSViewer(canvas, opts){
       const r = (a.resn === 'DNA' ? 2.5 : 1.6)*scaleR(p.k)*(sel?1.5:1);
       if (r < 0.35) return;
       ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI*2);
-      ctx.fillStyle = rgba(sel ? SEL : a.color, fog(p.z, sel ? 0.98 : 0.52));
+      ctx.fillStyle = rgba(sel ? SEL : a.color, fog(p.z, sel ? 0.75 : 0.52));
       ctx.fill();
     });
     if (st.highlights.has('mtdna')){
@@ -681,6 +682,7 @@ function BSViewer(canvas, opts){
       st.labelEls.forEach(el=>el.remove()); st.labelEls.clear();
     },
     setRepresentation(rep){ st.rep = rep; },
+    setAutoRotate(on){ st.spin = on ? 0.00035 : 0; },
     setHighlight(keys){ st.highlights = new Set(keys || []); },
     focusSite(key, zoom){
       const s = st.scene && st.scene.sites[key];

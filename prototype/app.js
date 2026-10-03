@@ -13,7 +13,7 @@ const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').match
 
 /* ── 状态单源 ──────────────────────────────────────────────────── */
 const State = {
-  structure:null, compareStructure:null, compareOn:false, camLinked:true,
+  structure:null, compareStructure:null, compareOn:false, camLinked:false, /* 对比视口默认独立相机 */
   rep:'cartoon', scopeSelection:false,
   selection:null, highlights:new Set(),
   mode:'cache', processStep:0, playing:false, lastClaim:null,
@@ -24,7 +24,8 @@ const State = {
 /* ── 渲染器实例（只读执行） ────────────────────────────────────── */
 let VM = null;            // 主视口
 let VC = null;            // 对比视口
-let cmpWrap = null;
+let cmpWrap = null;       // 对比画布容器
+let cmpHead = null;       // 对比面板头部（结构标识 + 退出按钮）
 
 const viewport = $('#viewport');
 VM = BSViewer($('#scene'), {
@@ -561,8 +562,6 @@ function ensureCompare(on){
     $('#scene').style.right = '50%';
     cmpWrap = document.createElement('div');
     cmpWrap.className = 'cmp';
-    cmpWrap.innerHTML = `
-      <div class="cmp__tag" id="cmpTag">对比结构</div>`;
     const cvs = document.createElement('canvas');
     cvs.className = 'cmp__canvas';
     cmpWrap.appendChild(cvs);
@@ -570,26 +569,47 @@ function ensureCompare(on){
     const div = document.createElement('div');
     div.className = 'cmp__div';
     vp.appendChild(div);
-    VC = BSViewer(cvs, { labels:false, autoRotate:true,
+    /* 头部挂在视口层（不是画布层），保证按钮始终可点可见 */
+    cmpHead = document.createElement('div');
+    cmpHead.className = 'cmp__head';
+    cmpHead.innerHTML = `<div class="cmp__tag" id="cmpTag">对比结构</div>
+      <button class="cmp__close" id="cmpClose" aria-label="退出对比模式" title="退出对比模式">退出对比 ×</button>`;
+    vp.appendChild(cmpHead);
+    $('#cmpClose', cmpHead).onclick = ()=> ensureCompare(false);
+    /* 各调各的摄像头：对比视口独立相机且不自动旋转；主视口在对比时同样停转，避免“一起转” */
+    VC = BSViewer(cvs, { labels:false, autoRotate:false,
       onCamera: s=>{ if (State.camLinked) VM.apply(s); } });
+    VM.setAutoRotate(false);
     VM.resize();
-    $('#btnLinkCam').hidden = false;
-    $('#btnCompare').setAttribute('aria-pressed','true');
-    $('#btnCompare').classList.add('is-on');
+    const lc = $('#btnLinkCam');
+    lc.hidden = false;
+    lc.classList.toggle('is-on', State.camLinked);
+    lc.setAttribute('aria-pressed', String(State.camLinked));
+    setCompareButton(true);
   } else if (!on && State.compareOn){
     State.compareOn = false;
     vp.classList.remove('is-compare');
     $('#scene').style.right = '';
     cmpWrap && cmpWrap.remove();
+    cmpHead && cmpHead.remove();
     $('.cmp__div', vp) && $('.cmp__div', vp).remove();
-    VC = null; cmpWrap = null;
+    VC = null; cmpWrap = null; cmpHead = null;
+    VM.setAutoRotate(true);
     VM.resize();
     $('#btnLinkCam').hidden = true;
-    $('#btnCompare').setAttribute('aria-pressed','false');
-    $('#btnCompare').classList.remove('is-on');
+    setCompareButton(false);
     State.compareStructure = null;
   }
   if (cmpWrap && State.compareStructure) $('#cmpTag').textContent = State.compareStructure;
+}
+/* 工具栏按钮同时承担退出职责，标签随之切换 */
+function setCompareButton(active){
+  const b = $('#btnCompare');
+  b.setAttribute('aria-pressed', String(active));
+  b.classList.toggle('is-on', active);
+  b.title = active ? '退出对比模式' : '并排对比';
+  const label = $('#btnCompareLabel');
+  if (label) label.textContent = active ? '退出对比' : '并排对比';
 }
 $('#btnCompare').onclick = ()=> ensureCompare(!State.compareOn);
 $('#btnLinkCam').onclick = e=>{
