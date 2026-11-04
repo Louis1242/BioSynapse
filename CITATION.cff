@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "BioSynapse"
+abstract: "BioSynapse 是一个开源 3D 互动生命科学学习平台的原型，当前形态为纯前端界面演示，科学数据均为 mock 且未经发布校验。"
+type: software
+authors:
+  - name: "Louis1242"
+repository-code: "https://github.com/Louis1242/BioSynapse"
+url: "https://github.com/Louis1242/BioSynapse"
+license: "Apache-2.0"
+version: "0.1.0-alpha"
