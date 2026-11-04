@@ -1,0 +1,41 @@
+1HHO JSON status=200
+{
+  "id": "1HHO",
+  "format": "mmcif",
+  "degraded": false,
+  "source": "cache",
+  "cache_age_ms": 3010127,
+  "fetch_error": null,
+  "atoms": 2192,
+  "chains": 2,
+  "residues": 287,
+  "heteroResidues": 114,
+  "chainIds": [
+    "A",
+    "B"
+  ],
+  "meta": {
+    "id": "1HHO",
+    "title": "STRUCTURE OF HUMAN OXYHAEMOGLOBIN AT 2.1 ANGSTROMS RESOLUTION",
+    "method": "X-RAY DIFFRACTION",
+    "resolution_a": 2.1,
+    "polymer_entity_count": 2,
+    "rcsb_polymer_monomer_count": 287,
+    "source": "RCSB_PDB",
+    "source_url": "https://files.rcsb.org/download/1HHO.cif",
+    "version": "2026-08-12T00:00:00.000+00:00",
+    "initial_release": "1983-10-27T00:00:00.000+00:00",
+    "retrieved_at": "2026-11-04T03:43:35.967Z",
+    "license": "PDB data is freely available (CC0)",
+    "upstream_ms": 1174
+  },
+  "cif_url": "/api/structure/1HHO?format=cif"
+}
+1HHO cif status=200 bytes=304328
+ZZZZ status=503 body=
+{
+  "error": "UPSTREAM_FAIL",
+  "detail": "cif HTTP 404",
+  "degraded": true,
+  "fallback": "mock"
+}

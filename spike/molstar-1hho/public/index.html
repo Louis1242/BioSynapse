@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>Mol* spike · 1HHO</title>
+<link rel="stylesheet" href="/molstar/molstar.css" />
+<style>
+  html, body { margin:0; height:100%; font:13px/1.5 system-ui, "Segoe UI", sans-serif; }
+  #wrap { display:flex; height:100%; }
+  #molview { flex:1; position:relative; min-width:0; }
+  #side { width:400px; border-left:1px solid #ddd; display:flex; flex-direction:column; background:#fafafa; }
+  #side header { padding:8px 10px; border-bottom:1px solid #ddd; }
+  #side h1 { font-size:13px; margin:0 0 6px; }
+  #log { flex:1; overflow:auto; padding:8px 10px; font:11.5px/1.45 ui-monospace, Consolas, monospace; white-space:pre-wrap; }
+  .ok { color:#0a7a3f; } .warn { color:#a56a00; } .bad { color:#b3261e; }
+  button { font-size:11.5px; margin:2px 2px 0 0; padding:3px 7px; cursor:pointer; }
+</style>
+<script src="/molstar/molstar.js"></script>
+</head>
+<body>
+<div id="wrap">
+  <div id="molview"></div>
+  <div id="molview2" style="position:absolute;left:-20000px;top:0;width:480px;height:360px;"></div>
+  <div id="side">
+    <header>
+      <h1>Mol* spike · S1–S5</h1>
+      <div id="ctrls">
+        <button data-load="1HHO">加载 1HHO</button>
+        <button data-rep="cartoon">cartoon</button>
+        <button data-rep="ball-and-stick">ball-and-stick</button>
+        <button data-rep="spacefill">spacefill</button>
+        <button data-rep="surface">surface</button>
+        <button data-hl="1">高亮 His87</button>
+        <button data-clr="1">清除</button>
+        <button data-focus="1">聚焦 His87</button>
+      </div>
+    </header>
+    <div id="log"></div>
+  </div>
+</div>
+<script>
+const T0 = performance.now();
+const logEl = document.getElementById('log');
+function log(msg, cls) {
+  const t = (performance.now() - T0).toFixed(0).padStart(5);
+  const line = `[${t}ms] ${msg}`;
+  logEl.appendChild(Object.assign(document.createElement('div'), { className: cls || '', textContent: line }));
+  logEl.scrollTop = logEl.scrollHeight;
+  console.log(line);
+}
+
+let viewer = null;
+window.SPIKE = { ready: false };
+
+/* ── 基础访问 ─────────────────────────────────────────── */
+function currentRef() {
+  const s = viewer.plugin.managers.structure.hierarchy.current.structures;
+  return s.length ? s[0] : null;
+}
+function currentStructure() { const r = currentRef(); return r ? r.cell.obj.data : null; }
+
+/* 列取值兼容：Mol* 列对象可能用 .value(i) 或直接下标 */
+function colVal(col, i) {
+  if (!col) return undefined;
+  if (typeof col.value === 'function') return col.value(i);
+  return col[i];
+}
+
+/* 元素级信息：unit.elements[k] 是整模型的原子索引，必须用它去查 residue/chain 分段表。
+   （实测：unit.chainIndex[k] / unit.residueIndex[k] 在多链模型里并不按元素下标对齐——
+   chain B 单元的前段会解出 chain A，这正是早期拾取残基号错误的根因。） */
+function elementInfo(unit, k) {
+  const h = unit.model.atomicHierarchy;
+  const ai = unit.elements[k];
+  const ri = h.residueAtomSegments.index[ai];
+  const ci = h.chainAtomSegments.index[ai];
+  return {
+    chain: colVal(h.chains.auth_asym_id, ci) ?? colVal(h.chains.label_asym_id, ci),
+    resi: colVal(h.residues.auth_seq_id, ri) ?? colVal(h.residues.label_seq_id, ri),
+    resn: colVal(h.atoms.label_comp_id, ai),
+    atom: colVal(h.atoms.label_atom_id, ai),
+    group: colVal(h.atoms.group_PDB, ai),
+    labelSeq: colVal(h.residues.label_seq_id, ri),
+    groupPDB: colVal(h.residues.group_PDB, ri),
+    chainIndex: ci, residueIndex: ri, atomIndex: ai,
+  };
+}
+
+const WATER = new Set(['HOH', 'WAT', 'DOD', 'H2O']);
+const AMINO = new Set(['ALA','ARG','ASN','ASP','CYS','GLN','GLU','GLY','HIS','ILE','LEU','LYS','MET','PHE','PRO','SER','THR','TRP','TYR','VAL','MSE','SEC','PYL']);
+/* ── S1 加载 + 统计 ───────────────────────────────────── */
+function structureStats() {
+  const structure = currentStructure();
+  if (!structure) return { chains: 0, residues: 0, polymerResidues: 0, heteroResidues: 0, atoms: 0, units: 0 };
+  const chains = new Set(), res = new Set(), polyRes = new Set(), hetRes = new Set();
+  let atoms = 0, units = 0;
+  for (const u of structure.units) {
+    if (!u.elements || !u.elements.length) continue;
+    units++;
+    for (let k = 0; k < u.elements.length; k++) {
+      const i = elementInfo(u, k);
+      atoms++;
+      chains.add(i.chain);
+      const key = `${i.chain}|${i.resi}|${i.resn}`;
+      res.add(key);
+      // 说明：本文件 residues.group_PDB 在 Mol* 里对水/配体也返回 ATOM，不能用它判定，
+      // 因此按残基名归类（聚合物=标准氨基酸，水=HOH/WAT，其余=配体）
+      if (WATER.has(i.resn)) hetRes.add(key);
+      else if (AMINO.has(i.resn)) polyRes.add(key);
+      else hetRes.add(key);
+    }
+  }
+  return {
+    chains: chains.size, residues: res.size, polymerResidues: polyRes.size, heteroResidues: hetRes.size,
+    atoms, units, chainIds: [...chains].sort(),
+  };
+}
+
+async function load(id) {
+  const t0 = performance.now();
+  const api = await fetch(`/api/structure/${id}`).then(r => r.json());
+  const loadRes = await viewer.loadStructureFromUrl(`/api/structure/${id}?format=cif`, 'mmcif', false);
+  const ms = Math.round(performance.now() - t0);
+  try { await viewer.plugin.runTask(viewer.plugin.state.data.updateTree({})); } catch (e) { log('updateTree 跳过: ' + e.message, 'warn'); }
+  const s = structureStats();
+  log(`S1 加载 ${id}: ${ms}ms apiChains=${api.chains} molChains=${s.chains} apiRes=${api.residues} molRes=${s.residues} atoms=${s.atoms} units=${s.units}`, 'ok');
+  log(`S1 meta source=${api.meta.source} res=${api.meta.resolution_a} method=${api.meta.method} retrieved_at=${api.meta.retrieved_at}`, '');
+  return { id, ms, api, mol: s, loadOk: !!loadRes };
+}
+
+/* ── S2 表示切换 ──────────────────────────────────────── */
+const PRESET_ID = {
+  cartoon: 'preset-structure-representation-polymer-cartoon',
+  'ball-and-stick': 'preset-structure-representation-atomic-detail',
+  spacefill: 'preset-structure-representation-atomic-detail',
+  surface: 'preset-structure-representation-molecular-surface',
+};
+const REP_TYPE = { cartoon: 'cartoon', 'ball-and-stick': 'ball-and-stick', spacefill: 'spacefill', surface: 'molecular-surface' };
+
+async function setRepresentation(proto) {
+  const ref = currentRef();
+  if (!ref) return { ok: false, error: 'no structure' };
+  const plugin = viewer.plugin;
+  const b = plugin.builders.structure.representation;
+  const t0 = performance.now();
+  const attempts = [];
+  const existing = currentReprTypes();
+  if (existing.length && existing.every(t => t === REP_TYPE[proto])) {
+    const ms = Math.round(performance.now() - t0);
+    log(`S2 ${proto} 已是当前表示，跳过 (${ms}ms)`, 'ok');
+    return { ok: true, via: 'already', used: REP_TYPE[proto], ms, reps: existing };
+  }
+  // 先清空所有既有表示，再添加目标表示（避免旧表示叠加；removeRepresentations 按「表示类型」跨组件生效）
+  try {
+    const cleared = await clearReps();
+    await plugin.managers.structure.component.addRepresentation(ref.components || [], REP_TYPE[proto]);
+    const ms = Math.round(performance.now() - t0);
+    log(`S2 ${proto} via component.addRepresentation(${REP_TYPE[proto]}) cleared=${cleared} ${ms}ms reps=${currentReprTypes().join(',')}`, 'ok');
+    return { ok: true, via: 'component.addRepresentation', used: REP_TYPE[proto], ms, cleared, reps: currentReprTypes(), attempts };
+  } catch (e) { attempts.push({ via: 'component.addRepresentation', ok: false, err: String(e.message).slice(0, 90) }); }
+  // 途径 2：按 preset id（回退）
+  try {
+    const r = await b.applyPreset(ref, PRESET_ID[proto]);
+    attempts.push({ via: 'applyPreset:' + PRESET_ID[proto], ok: !!r });
+    if (r) {
+      const ms = Math.round(performance.now() - t0);
+      const cleared = await clearReps();
+      await plugin.managers.structure.component.addRepresentation(ref.components || [], REP_TYPE[proto]);
+      log(`S2 ${proto} via applyPreset(${PRESET_ID[proto]}) ${ms}ms cleared=${cleared}`, 'ok');
+      return { ok: true, via: 'applyPreset', used: PRESET_ID[proto], ms, reps: currentReprTypes(), attempts };
+    }
+  } catch (e) { attempts.push({ via: 'applyPreset', ok: false, err: String(e.message).slice(0, 90) }); }
+  log(`S2 ${proto} 失败: ${JSON.stringify(attempts)}`, 'bad');
+  return { ok: false, attempts };
+}
+
+function currentReprTypes() {
+  const ref = currentRef();
+  if (!ref) return [];
+  const out = [];
+  for (const c of ref.components || []) for (const r of c.representations || []) {
+    const t = r.cell && r.cell.transform && r.cell.transform.params && r.cell.transform.params.type;
+    out.push(t && (t.name || String(t)) || '?');
+  }
+  return out;
+}
+
+async function clearReps() {
+  let removed = 0;
+  for (let guard = 0; guard < 12; guard++) {
+    const ref = currentRef();
+    const reps = ((ref && ref.components) || []).flatMap(c => c.representations || []);
+    if (!reps.length) break;
+    const seen = new Set();
+    for (const r of reps) {
+      const t = r.cell && r.cell.transform && r.cell.transform.params && r.cell.transform.params.type;
+      const key = (t && (t.name || String(t))) || '?';
+      if (seen.has(key)) continue;
+      seen.add(key);
+      try {
+        await viewer.plugin.managers.structure.component.removeRepresentations(ref.components, r);
+        removed++;
+      } catch (e) { log('removeRepresentations 失败: ' + e.message, 'warn'); return removed; }
+    }
+  }
+  return removed;
+}
+
+/* ── Loci 构造（不依赖 StructureElement 导出） ────────── */
+function buildResidueLoci(chain, resi) {
+  const structure = currentStructure();
+  if (!structure) return null;
+  const elements = [];
+  for (const unit of structure.units) {
+    if (!unit.elements || !unit.elements.length) continue;
+    const indices = [];
+    for (let k = 0; k < unit.elements.length; k++) {
+      const i = elementInfo(unit, k);
+      if (String(i.chain) === String(chain) && String(i.resi) === String(resi)) indices.push(k);
+    }
+    if (indices.length) elements.push({ unit, indices });
+  }
+  if (!elements.length) return null;
+  return { kind: 'element-loci', structure, elements };
+}
+function unionLoci(list) {
+  if (list.length === 1) return list[0];
+  const structure = list[0].structure;
+  return { kind: 'element-loci', structure, elements: list.flatMap(l => l.elements) };
+}
+
+/* Mol* 的 indices 可能是 Array / TypedArray / SortedArray，统一转成数组 */
+function indicesToArray(indices) {
+  if (indices == null) return [];
+  if (typeof indices === 'number') return [indices];
+  if (Array.isArray(indices)) return indices;
+  if (ArrayBuffer.isView(indices)) return Array.from(indices);
+  if (indices.data && ArrayBuffer.isView(indices.data)) return Array.from(indices.data).slice(0, indices.length ?? undefined);
+  if (typeof indices.length === 'number') return Array.from({ length: indices.length }, (_, i) => (indices.get ? indices.get(i) : indices[i]));
+  return [];
+}
+/* ── S3 拾取 ──────────────────────────────────────────── */
+/* 结论（实测）：canvas3d.getLoci().indices 与 picking id 的 groupId 都不可靠——
+   cartoon 几何下 groupId 是「残基级」索引（0-based），spacefill/ball-and-stick 下又是别的粒度。
+   可靠做法：identify 返回世界坐标 position，用它找最近原子，再反查残基。
+   Mol* 自带标签（LEU 100 | A）与此法一致，而按 groupId 解码得到 TRP 14（错）。 */
+let atomIndexCache = null;
+function buildAtomIndex(structure) {
+  if (atomIndexCache && atomIndexCache.structure === structure) return atomIndexCache;
+  const xs = [], ys = [], zs = [], uis = [], ks = [];
+  const t0 = performance.now();
+  for (let ui = 0; ui < structure.units.length; ui++) {
+    const u = structure.units[ui];
+    if (!u.elements || !u.elements.length) continue;
+    for (let k = 0; k < u.elements.length; k++) {
+      const out = [0, 0, 0];
+      u.conformation.position(u.elements[k], out);
+      xs.push(out[0]); ys.push(out[1]); zs.push(out[2]); uis.push(ui); ks.push(k);
+    }
+  }
+  atomIndexCache = {
+    structure,
+    n: xs.length,
+    xs: Float32Array.from(xs), ys: Float32Array.from(ys), zs: Float32Array.from(zs),
+    uis: Int32Array.from(uis), ks: Int32Array.from(ks),
+    buildMs: Math.round(performance.now() - t0),
+  };
+  log(`S3 原子空间索引构建 ${atomIndexCache.buildMs}ms atoms=${atomIndexCache.n}`, 'ok');
+  return atomIndexCache;
+}
+function nearestAtom(position) {
+  const structure = currentStructure();
+  if (!structure || !position) return null;
+  const ai = buildAtomIndex(structure);
+  const [x, y, z] = [position[0], position[1], position[2]];
+  let best = Infinity, bi = -1;
+  for (let i = 0; i < ai.n; i++) {
+    const dx = ai.xs[i] - x, dy = ai.ys[i] - y, dz = ai.zs[i] - z;
+    const d2 = dx * dx + dy * dy + dz * dz;
+    if (d2 < best) { best = d2; bi = i; }
+  }
+  if (bi < 0) return null;
+  const unit = structure.units[ai.uis[bi]];
+  const info = elementInfo(unit, ai.ks[bi]);
+  return { ...info, dist: +Math.sqrt(best).toFixed(2), ui: ai.uis[bi], k: ai.ks[bi] };
+}
+function pickAt(x, y) {
+  const t0 = performance.now();
+  const plugin = viewer.plugin;
+  const pd = plugin.canvas3d.identify(x, y);
+  if (!pd || !pd.id) return { hit: false, raw: pd, pickMs: +(performance.now() - t0).toFixed(2) };
+  const n = nearestAtom(pd.position);
+  if (!n) return { hit: false, error: 'no nearest atom', id: pd.id, pickMs: +(performance.now() - t0).toFixed(2) };
+  return {
+    hit: true, via: 'position-nearest', id: pd.id, position: pd.position, dist: n.dist, count: 1,
+    pickMs: +(performance.now() - t0).toFixed(2),
+    residues: [{ chain: n.chain, resi: n.resi, resn: n.resn, atom: n.atom }],
+  };
+}
+/* 自洽性测试：点 p 拾取 r → 聚焦 r → 视口中心附近再扫描，统计命中里仍为 r 的比例 */
+async function pickRoundTrip(points) {
+  const out = [];
+  const c = document.querySelector('#molview canvas');
+  for (const [x, y] of points) {
+    const first = pickAt(x, y);
+    if (!first.hit) { out.push({ xy: [x, y], first: null, match: null }); continue; }
+    const r = first.residues[0];
+    focusResidue(r.chain, r.resi);
+    await new Promise(res => setTimeout(res, 400));
+    const cx = Math.round(c.clientWidth / 2), cy = Math.round(c.clientHeight / 2);
+    let hits = 0, same = 0;
+    for (let dy = -24; dy <= 24; dy += 12) for (let dx = -24; dx <= 24; dx += 12) {
+      const p = pickAt(cx + dx, cy + dy);
+      if (!p.hit) continue;
+      hits++;
+      if (p.residues[0].chain === r.chain && String(p.residues[0].resi) === String(r.resi)) same++;
+    }
+    out.push({ xy: [x, y], first: r, hits, same, match: hits > 0 ? same / hits : null });
+  }
+  return out;
+}
+function gridPick(n) {
+  const c = document.querySelector('#molview canvas');
+  if (!c) return { error: 'no canvas' };
+  const w = c.clientWidth, h = c.clientHeight;
+  const hits = [];
+  let total = 0, ms = 0;
+  for (let iy = 1; iy < n; iy++) for (let ix = 1; ix < n; ix++) {
+    total++;
+    const r = pickAt(Math.round(w * ix / n), Math.round(h * iy / n));
+    ms += r.pickMs || 0;
+    if (r.hit) hits.push({ res: r.residues[0], count: r.count, dist: r.dist });
+  }
+  return {
+    grid: `${n}x${n}`, samples: total, hits: hits.length, hitRate: +(hits.length / total).toFixed(3),
+    avgPickMs: +(ms / total).toFixed(2),
+    maxDist: +(Math.max(...hits.map(x => x.dist || 0))).toFixed(2),
+    distinctResidues: new Set(hits.map(x => `${x.res.chain}:${x.res.resi}`)).size,
+    allHaveResi: hits.every(x => x.res && x.res.resi !== undefined && x.res.resi !== null && x.res.resn),
+    allValid: hits.every(x => x.res && /^[A-Za-z0-9]{1,3}$/.test(String(x.res.resn)) && String(x.res.chain).length <= 2 && x.res.resi != null),
+    chains: [...new Set(hits.map(x => x.res.chain))],
+    sample: hits.slice(0, 5).map(x => x.res),
+  };
+}
+
+/* ── S4 选择/高亮 → State.highlights ─────────────────── */
+const State = { highlights: new Set(), rep: 'cartoon' };
+async function highlightResidues(list) {
+  const t0 = performance.now();
+  const lociArr = list.map(({ chain, resi }) => buildResidueLoci(chain, resi)).filter(Boolean);
+  if (!lociArr.length) return { ok: false, error: 'residue not found' };
+  const loci = unionLoci(lociArr);
+  let hlOk = false, selOk = false;
+  try { viewer.plugin.managers.interactivity.lociHighlights.highlightOnly({ loci }); hlOk = true; } catch (e) { log('lociHighlights: ' + e.message, 'warn'); }
+  try { viewer.plugin.managers.structure.selection.set(loci); selOk = true; } catch (e) { log('selection.set: ' + e.message, 'warn'); }
+  for (const { chain, resi } of list) State.highlights.add(`${chain}:${resi}`);
+  const ms = Math.round(performance.now() - t0);
+  log(`S4 高亮 ${JSON.stringify([...State.highlights])} lociBlocks=${loci.elements.length} hl=${hlOk} sel=${selOk} ${ms}ms`, 'ok');
+  return { ok: hlOk || selOk, ms, hlOk, selOk, highlights: [...State.highlights] };
+}
+function clearHighlight() {
+  try { viewer.plugin.managers.interactivity.lociHighlights.clearHighlights(); } catch (e) {}
+  try { viewer.plugin.managers.structure.selection.clear(); } catch (e) {}
+  State.highlights.clear();
+  log('S4 clear_highlight → Set.size=' + State.highlights.size, 'ok');
+  return { ok: true, highlights: [] };
+}
+function resetCamera() {
+  viewer.plugin.managers.camera.reset();
+  return { ok: true };
+}
+function residueAtoms(chain, resi, onlyFirstUnit) {
+  const structure = currentStructure();
+  if (!structure) return null;
+  const blocks = [];
+  for (const unit of structure.units) {
+    if (!unit.elements || !unit.elements.length) continue;
+    const pts = [];
+    for (let k = 0; k < unit.elements.length; k++) {
+      const i = elementInfo(unit, k);
+      if (String(i.chain) === String(chain) && String(i.resi) === String(resi)) {
+        const out = [0, 0, 0];
+        unit.conformation.position(unit.elements[k], out);
+        pts.push(out);
+      }
+    }
+    if (pts.length) blocks.push({ unit, pts });
+  }
+  if (!blocks.length) return null;
+  if (!onlyFirstUnit) return blocks;
+  return [blocks.reduce((a, b) => (b.pts.length > a.pts.length ? b : a))];
+}
+function focusResidue(chain, resi) {
+  const blocks = residueAtoms(chain, resi, true);
+  if (!blocks) return { ok: false, error: 'residue not found' };
+  const pts = blocks[0].pts;
+  const n = pts.length;
+  const center = [0, 1, 2].map(j => pts.reduce((a, p) => a + p[j], 0) / n);
+  const radius = Math.max(...pts.map(p => Math.hypot(p[0] - center[0], p[1] - center[1], p[2] - center[2]))) + 0.8;
+  const t0 = performance.now();
+  const plugin = viewer.plugin;
+  const bh = plugin.managers.camera.boundaryHelper;
+  bh.reset(); bh.includePositionRadius(center, radius); bh.finishedIncludeStep();
+  plugin.managers.camera.focusSphere(bh.getSphere());
+  const ms = Math.round(performance.now() - t0);
+  log(`S4 聚焦 ${chain}:${resi} atoms=${n} radius=${radius.toFixed(1)} ${ms}ms`, 'ok');
+  return { ok: true, ms, atoms: n, radius: +radius.toFixed(2), center };
+}
+
+/* ── 8 类 action 演练 ─────────────────────────────────── */
+async function dryRun() {
+  const results = [];
+  const time = async (name, fn) => {
+    const t0 = performance.now();
+    try {
+      const r = await fn();
+      results.push({ action: name, ok: !!(r && r.ok !== false), ms: Math.round(performance.now() - t0), detail: r });
+    } catch (e) {
+      results.push({ action: name, ok: false, ms: Math.round(performance.now() - t0), detail: String(e.message) });
+    }
+  };
+  await time('load_structure', async () => {
+    const r = await load('1HHO');
+    const s = structureStats();
+    return { ok: s.chains > 0 && s.polymerResidues > 0, chains: s.chains, polymerResidues: s.polymerResidues };
+  });
+  await time('set_representation', () => setRepresentation('cartoon'));
+  await time('highlight', () => highlightResidues([{ chain: 'A', resi: 87 }]));
+  await time('focus_camera', () => focusResidue('A', 87));
+  await time('clear_highlight', async () => clearHighlight());
+  await time('open_evidence', async () => ({ ok: true, note: '纯 DOM 抽屉，与 3D 无关，可直接迁' }));
+  await time('compare', async () => {
+    if (!window.viewer2) {
+      window.viewer2 = await molstar.Viewer.create('molview2', { layoutIsExpanded: false, layoutShowControls: false, layoutShowSequence: false, layoutShowLog: false, layoutShowLeftPanel: false });
+    }
+    await window.viewer2.loadStructureFromUrl('/api/structure/1MBO?format=cif', 'mmcif', false);
+    const s2 = window.viewer2.plugin.managers.structure.hierarchy.current.structures;
+    return { ok: s2.length > 0, note: '第二 Viewer 实例（独立 canvas）加载 1MBO', structures: s2.length };
+  });
+  await time('play_process/step', async () => ({ ok: false, note: 'v0.1 不适用（示意层在 v0.2）' }));
+  log('8 action: ' + results.map(r => `${r.action}=${r.ok ? 'OK' : 'X'}(${r.ms}ms)`).join(' '), 'ok');
+  return results;
+}
+
+/* ── 启动 ─────────────────────────────────────────────── */
+(async () => {
+  try {
+    viewer = await molstar.Viewer.create('molview', {
+      layoutIsExpanded: false, layoutShowControls: true, layoutShowSequence: true,
+      layoutShowLog: false, layoutShowLeftPanel: true, viewportShowExpand: true,
+    });
+    window.SPIKE.ready = true;
+    log('Mol* Viewer 已创建');
+    Object.assign(window.SPIKE, { viewer, load, structureStats, setRepresentation, pickAt, pickRoundTrip, gridPick, highlightResidues, clearHighlight, focusResidue, dryRun, State, elementInfo, buildResidueLoci, log, resetCamera });
+  } catch (e) {
+    log('Viewer 创建失败: ' + e.message, 'bad');
+    window.SPIKE.error = String(e.message);
+  }
+})();
+
+document.getElementById('ctrls').addEventListener('click', async ev => {
+  const b = ev.target.closest('button');
+  if (!b || !window.SPIKE.ready) return;
+  if (b.dataset.load) await load(b.dataset.load);
+  if (b.dataset.rep) await setRepresentation(b.dataset.rep);
+  if (b.dataset.hl) await highlightResidues([{ chain: 'A', resi: 87 }]);
+  if (b.dataset.clr) clearHighlight();
+  if (b.dataset.focus) focusResidue('A', 87);
+});
+</script>
+</body>
+</html>

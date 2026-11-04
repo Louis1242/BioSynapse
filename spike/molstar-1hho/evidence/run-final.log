@@ -1,0 +1,461 @@
+{
+  "bootMs": 1667,
+  "s1": {
+    "ms": 423,
+    "apiChains": 2,
+    "molChains": 2,
+    "apiRes": 287,
+    "molPoly": 287,
+    "molHetero": 114,
+    "atoms": 4792,
+    "units": 16,
+    "meta": {
+      "id": "1HHO",
+      "title": "STRUCTURE OF HUMAN OXYHAEMOGLOBIN AT 2.1 ANGSTROMS RESOLUTION",
+      "method": "X-RAY DIFFRACTION",
+      "resolution_a": 2.1,
+      "polymer_entity_count": 2,
+      "rcsb_polymer_monomer_count": 287,
+      "source": "RCSB_PDB",
+      "source_url": "https://files.rcsb.org/download/1HHO.cif",
+      "version": "2026-08-12T00:00:00.000+00:00",
+      "initial_release": "1983-10-27T00:00:00.000+00:00",
+      "retrieved_at": "2026-11-04T03:43:35.967Z",
+      "license": "PDB data is freely available (CC0)",
+      "upstream_ms": 1174
+    }
+  },
+  "s2": [
+    {
+      "rep": "cartoon",
+      "ok": true,
+      "via": "component.addRepresentation",
+      "used": "cartoon",
+      "ms": 368,
+      "reps": [
+        "cartoon",
+        "cartoon",
+        "ball-and-stick",
+        "ball-and-stick"
+      ]
+    },
+    {
+      "rep": "ball-and-stick",
+      "ok": true,
+      "via": "component.addRepresentation",
+      "used": "ball-and-stick",
+      "ms": 52,
+      "reps": [
+        "ball-and-stick",
+        "ball-and-stick",
+        "ball-and-stick",
+        "ball-and-stick"
+      ]
+    },
+    {
+      "rep": "spacefill",
+      "ok": true,
+      "via": "component.addRepresentation",
+      "used": "spacefill",
+      "ms": 16,
+      "reps": [
+        "spacefill",
+        "spacefill",
+        "spacefill",
+        "spacefill"
+      ]
+    },
+    {
+      "rep": "surface",
+      "ok": true,
+      "via": "component.addRepresentation",
+      "used": "molecular-surface",
+      "ms": 798,
+      "reps": [
+        "molecular-surface",
+        "molecular-surface",
+        "molecular-surface",
+        "molecular-surface"
+      ]
+    }
+  ],
+  "s3": {
+    "pickTiming": {
+      "n": 50,
+      "avgMs": 0.01
+    },
+    "gridCartoon": {
+      "grid": "9x9",
+      "samples": 64,
+      "hits": 10,
+      "hitRate": 0.156,
+      "avgPickMs": 1.33,
+      "maxDist": 1.49,
+      "distinctResidues": 10,
+      "allHaveResi": true,
+      "allValid": true,
+      "chains": [
+        "B",
+        "A"
+      ],
+      "sample": [
+        {
+          "chain": "B",
+          "resi": 52,
+          "resn": "ASP",
+          "atom": "CA"
+        },
+        {
+          "chain": "A",
+          "resi": 4,
+          "resn": "PRO",
+          "atom": "C"
+        },
+        {
+          "chain": "B",
+          "resi": 113,
+          "resn": "VAL",
+          "atom": "CA"
+        },
+        {
+          "chain": "A",
+          "resi": 107,
+          "resn": "VAL",
+          "atom": "N"
+        },
+        {
+          "chain": "A",
+          "resi": 62,
+          "resn": "VAL",
+          "atom": "CA"
+        }
+      ]
+    },
+    "centerPicks": [
+      {
+        "d": [
+          0,
+          0
+        ],
+        "hit": false
+      },
+      {
+        "d": [
+          16,
+          0
+        ],
+        "hit": true,
+        "dist": 1.18,
+        "res": {
+          "chain": "A",
+          "resi": 87,
+          "resn": "HIS",
+          "atom": "CB"
+        }
+      },
+      {
+        "d": [
+          -16,
+          0
+        ],
+        "hit": false
+      },
+      {
+        "d": [
+          0,
+          16
+        ],
+        "hit": false
+      },
+      {
+        "d": [
+          0,
+          -16
+        ],
+        "hit": false
+      },
+      {
+        "d": [
+          24,
+          24
+        ],
+        "hit": true,
+        "dist": 0.3,
+        "res": {
+          "chain": "A",
+          "resi": 87,
+          "resn": "HIS",
+          "atom": "CA"
+        }
+      },
+      {
+        "d": [
+          -24,
+          -24
+        ],
+        "hit": false
+      },
+      {
+        "d": [
+          32,
+          0
+        ],
+        "hit": true,
+        "dist": 0.84,
+        "res": {
+          "chain": "A",
+          "resi": 87,
+          "resn": "HIS",
+          "atom": "CA"
+        }
+      },
+      {
+        "d": [
+          0,
+          32
+        ],
+        "hit": false
+      },
+      {
+        "d": [
+          24,
+          -24
+        ],
+        "hit": false
+      }
+    ],
+    "gridAfterFocus": {
+      "grid": "9x9",
+      "samples": 64,
+      "hits": 13,
+      "hitRate": 0.203,
+      "avgPickMs": 0.01,
+      "maxDist": 1.41,
+      "distinctResidues": 8,
+      "allHaveResi": true,
+      "allValid": true,
+      "chains": [
+        "A"
+      ],
+      "sample": [
+        {
+          "chain": "A",
+          "resi": 132,
+          "resn": "VAL",
+          "atom": "CA"
+        },
+        {
+          "chain": "A",
+          "resi": 81,
+          "resn": "SER",
+          "atom": "N"
+        },
+        {
+          "chain": "A",
+          "resi": 135,
+          "resn": "VAL",
+          "atom": "C"
+        },
+        {
+          "chain": "A",
+          "resi": 136,
+          "resn": "LEU",
+          "atom": "CA"
+        },
+        {
+          "chain": "A",
+          "resi": 136,
+          "resn": "LEU",
+          "atom": "CA"
+        }
+      ]
+    },
+    "roundTrip": [
+      {
+        "xy": [
+          204,
+          399
+        ],
+        "first": null,
+        "match": null
+      },
+      {
+        "xy": [
+          254,
+          399
+        ],
+        "first": {
+          "chain": "A",
+          "resi": 87,
+          "resn": "HIS",
+          "atom": "N"
+        },
+        "hits": 5,
+        "same": 5,
+        "match": 1
+      },
+      {
+        "xy": [
+          204,
+          449
+        ],
+        "first": {
+          "chain": "A",
+          "resi": 87,
+          "resn": "HIS",
+          "atom": "C"
+        },
+        "hits": 5,
+        "same": 5,
+        "match": 1
+      },
+      {
+        "xy": [
+          154,
+          359
+        ],
+        "first": null,
+        "match": null
+      },
+      {
+        "xy": [
+          284,
+          479
+        ],
+        "first": null,
+        "match": null
+      },
+      {
+        "xy": [
+          124,
+          479
+        ],
+        "first": null,
+        "match": null
+      }
+    ]
+  },
+  "s4": {
+    "highlight": {
+      "ok": true,
+      "ms": 3,
+      "hlOk": true,
+      "selOk": true,
+      "highlights": [
+        "A:87"
+      ]
+    },
+    "setContents": {
+      "size": 1,
+      "values": [
+        "A:87"
+      ]
+    },
+    "clear": {
+      "ok": true,
+      "highlights": []
+    }
+  },
+  "actions": [
+    {
+      "action": "load_structure",
+      "ok": true,
+      "ms": 79,
+      "detail": {
+        "ok": true,
+        "chains": 2,
+        "polymerResidues": 287
+      }
+    },
+    {
+      "action": "set_representation",
+      "ok": true,
+      "ms": 63,
+      "detail": {
+        "ok": true,
+        "via": "component.addRepresentation",
+        "used": "cartoon",
+        "ms": 63,
+        "cleared": 2,
+        "reps": [
+          "cartoon",
+          "cartoon",
+          "ball-and-stick",
+          "ball-and-stick"
+        ],
+        "attempts": []
+      }
+    },
+    {
+      "action": "highlight",
+      "ok": true,
+      "ms": 3,
+      "detail": {
+        "ok": true,
+        "ms": 2,
+        "hlOk": true,
+        "selOk": true,
+        "highlights": [
+          "A:87"
+        ]
+      }
+    },
+    {
+      "action": "focus_camera",
+      "ok": true,
+      "ms": 1,
+      "detail": {
+        "ok": true,
+        "ms": 0,
+        "atoms": 10,
+        "radius": 4.4,
+        "center": [
+          43.37969970703125,
+          28.645399856567384,
+          11.566799926757813
+        ]
+      }
+    },
+    {
+      "action": "clear_highlight",
+      "ok": true,
+      "ms": 1,
+      "detail": {
+        "ok": true,
+        "highlights": []
+      }
+    },
+    {
+      "action": "open_evidence",
+      "ok": true,
+      "ms": 0,
+      "detail": {
+        "ok": true,
+        "note": "纯 DOM 抽屉，与 3D 无关，可直接迁"
+      }
+    },
+    {
+      "action": "compare",
+      "ok": true,
+      "ms": 157,
+      "detail": {
+        "ok": true,
+        "note": "第二 Viewer 实例（独立 canvas）加载 1MBO",
+        "structures": 1
+      }
+    },
+    {
+      "action": "play_process/step",
+      "ok": false,
+      "ms": 0,
+      "detail": {
+        "ok": false,
+        "note": "v0.1 不适用（示意层在 v0.2）"
+      }
+    }
+  ],
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "pageErrors": []
+}
